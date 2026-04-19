@@ -187,9 +187,13 @@ const getPathResolver = ({ customRootDir }: { customRootDir?: string } = {}) => 
 // Resolve an fp from resolvePath to an absolute path.
 // When customRootDir is set, fp is already absolute; otherwise join with the base prefix.
 async function toAbsolute(resolved: ResolvedPath): Promise<string> {
-  if (nodePath.isAbsolute(resolved.fp)) return resolved.fp;
-  const prefix = (await resolved.basePrefix()).replace(/\/+$/, '');
-  return resolved.fp ? nodePath.join(prefix, resolved.fp) : prefix;
+  const prefixRaw = await resolved.basePrefix();
+  const prefix = prefixRaw.replace(/[/\\]+$/, '');
+  if (nodePath.isAbsolute(resolved.fp)) {
+    return nodePath.normalize(resolved.fp);
+  }
+  const joined = resolved.fp ? nodePath.join(prefix, resolved.fp) : prefix;
+  return nodePath.normalize(joined);
 }
 
 export const nodeFileSystem: FileSystem = {

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { BaseDir, FileSystem, ResolvedPath } from '@/types/system';
 import { DatabaseOpts, DatabaseService } from '@/types/database';
@@ -258,7 +259,7 @@ describe('BaseAppService', () => {
   describe('resolveFilePath', () => {
     test('combines prefix with path', async () => {
       const result = await service.resolveFilePath('test.json', 'Data');
-      expect(result).toBe('/base/books/test.json');
+      expect(result).toBe(path.join('/base/books', 'test.json'));
     });
 
     test('returns just prefix when path is empty', async () => {

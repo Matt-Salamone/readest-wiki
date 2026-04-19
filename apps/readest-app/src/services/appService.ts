@@ -17,6 +17,8 @@ import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from '
 import type { BookNav } from '@/services/nav';
 import { getLibraryFilename, getLibraryBackupFilename } from '@/utils/book';
 
+import * as nodePath from 'node:path';
+
 import { getOSPlatform } from '@/utils/misc';
 import { ProgressHandler } from '@/utils/transfer';
 import { CustomTextureInfo } from '@/styles/textures';
@@ -143,7 +145,7 @@ export abstract class BaseAppService implements AppService {
 
   async resolveFilePath(path: string, base: BaseDir): Promise<string> {
     const prefix = await this.fs.getPrefix(base);
-    return path ? `${prefix}/${path}` : prefix;
+    return path ? nodePath.normalize(nodePath.join(prefix, path)) : prefix;
   }
 
   async readDirectory(path: string, base: BaseDir): Promise<FileItem[]> {

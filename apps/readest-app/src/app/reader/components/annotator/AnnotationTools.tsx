@@ -8,6 +8,7 @@ import { BsTranslate } from 'react-icons/bs';
 import { TbHexagonLetterD } from 'react-icons/tb';
 import { FaHeadphones } from 'react-icons/fa6';
 import { IoIosBuild } from 'react-icons/io';
+import { PiBookOpenText } from 'react-icons/pi';
 import { AnnotationToolType } from '@/types/annotator';
 import { stubTranslation as _ } from '@/utils/misc';
 
@@ -55,6 +56,13 @@ export const annotationToolButtons = createAnnotationToolButtons([
     label: _('Annotate'),
     tooltip: _('Annotate text after selection'),
     Icon: BsPencilSquare,
+  },
+  {
+    type: 'add-to-wiki',
+    label: _('Add to Wiki'),
+    tooltip: _('Save selection to personal wiki'),
+    Icon: PiBookOpenText,
+    quickAction: true,
   },
   {
     type: 'search',
