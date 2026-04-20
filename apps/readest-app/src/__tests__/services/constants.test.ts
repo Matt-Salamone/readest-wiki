@@ -337,6 +337,8 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_READSETTINGS.isSideBarPinned).toBe('boolean');
       expect(typeof DEFAULT_READSETTINGS.notebookWidth).toBe('string');
       expect(typeof DEFAULT_READSETTINGS.isNotebookPinned).toBe('boolean');
+      expect(typeof DEFAULT_READSETTINGS.wikiPanelWidth).toBe('string');
+      expect(typeof DEFAULT_READSETTINGS.isWikiPanelPinned).toBe('boolean');
       expect(typeof DEFAULT_READSETTINGS.notebookActiveTab).toBe('string');
     });
 

@@ -1,0 +1,163 @@
+# Builds an unsigned iOS .ipa on macOS for local re-signing (e.g. Sideloadly on Windows).
+# This workflow does not use Apple certificates or GitHub signing secrets.
+#
+# Limitations:
+# - Apple/Xcode may still refuse fully unsigned device builds for some projects; if this job
+#   fails at the xcodebuild step, you will need a signing-based CI path instead.
+# - Install the artifact with Sideloadly (or similar); it signs with your Apple ID.
+
+name: iOS unsigned IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-ipa:
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      HUSKY: '0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/readest-app/src-tauri
+          key: ios-unsigned
+
+      - name: Install dependencies (monorepo root)
+        run: |
+          set -euo pipefail
+          pnpm install
+
+      - name: Vendor assets (Readest)
+        working-directory: apps/readest-app
+        run: |
+          set -euo pipefail
+          pnpm setup-vendors
+
+      - name: Prepare Tauri env for Next build
+        working-directory: apps/readest-app
+        run: |
+          set -euo pipefail
+          if [ ! -f .env.tauri ]; then
+            cp .env.tauri.example .env.tauri
+          fi
+
+      - name: Generate iOS Xcode project (Tauri)
+        working-directory: apps/readest-app
+        run: |
+          set -euo pipefail
+          pnpm exec tauri ios init --ci
+
+      - name: Build frontend (out/ for Tauri bundle)
+        working-directory: apps/readest-app
+        run: |
+          set -euo pipefail
+          pnpm build
+
+      - name: Compile with xcodebuild (no code signing)
+        id: xcode
+        working-directory: apps/readest-app/src-tauri/gen/apple
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          projects=( *.xcodeproj )
+          if [ "${#projects[@]}" -eq 0 ]; then
+            echo "No .xcodeproj under gen/apple"
+            ls -la
+            exit 1
+          fi
+          PROJ="${projects[0]}"
+          echo "project=${PROJ}" >> "${GITHUB_OUTPUT}"
+
+          LIST_JSON="$(xcodebuild -list -project "${PROJ}" -json)"
+          SCHEME="$(
+            echo "${LIST_JSON}" | jq -r '
+              (.project.schemes // []) as $s
+              | ($s | map(select(test("_iOS$"))) | .[0])
+                // $s[0]
+                // empty
+            '
+          )"
+          if [ -z "${SCHEME}" ]; then
+            echo "Could not determine Xcode scheme"
+            xcodebuild -list -project "${PROJ}" || true
+            exit 1
+          fi
+          echo "scheme=${SCHEME}" >> "${GITHUB_OUTPUT}"
+          echo "Using project=${PROJ} scheme=${SCHEME}"
+
+          DD="${GITHUB_WORKSPACE}/apps/readest-app/src-tauri/ios-derived-data"
+          rm -rf "${DD}"
+          mkdir -p "${DD}"
+
+          xcodebuild \
+            -project "${PROJ}" \
+            -scheme "${SCHEME}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "${DD}" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            build
+
+          APP_PATH="$(find "${DD}" -type d -name "*.app" -path "*/Release-iphoneos/*" | head -n 1)"
+          if [ -z "${APP_PATH}" ]; then
+            echo "No .app found under ${DD}/**/Release-iphoneos"
+            find "${DD}" -name "*.app" -maxdepth 8 || true
+            exit 1
+          fi
+          echo "app_path=${APP_PATH}" >> "${GITHUB_OUTPUT}"
+          echo "Built app: ${APP_PATH}"
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="${{ steps.xcode.outputs.app_path }}"
+          STAGING="${GITHUB_WORKSPACE}/ipa-staging"
+          rm -rf "${STAGING}"
+          mkdir -p "${STAGING}/Payload"
+          cp -R "${APP_PATH}" "${STAGING}/Payload/"
+          IPA="${GITHUB_WORKSPACE}/readest-unsigned.ipa"
+          rm -f "${IPA}"
+          ( cd "${STAGING}" && zip -qr "${IPA}" Payload )
+          ls -lh "${IPA}"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: readest-ios-unsigned-ipa
+          path: readest-unsigned.ipa
+          if-no-files-found: error

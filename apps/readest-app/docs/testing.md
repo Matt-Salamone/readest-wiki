@@ -100,6 +100,10 @@ pnpm test:e2e
 - **Connects to:** port 4445 (embedded WebDriver server)
 - **Use for:** UI interaction tests, window management, navigation flows.
 
+## Manual checklist — Personal wiki Phase 2
+
+For **desktop manual QA** of wiki quick capture (Add to Wiki, header `+`, single section tag, slug vs new page behavior), see [wiki-phase2-testing.md](./wiki-phase2-testing.md).
+
 ## Test File Naming
 
 | Suffix              | Runner              | Environment           |

@@ -161,6 +161,7 @@
     "react-dom": "19.2.5",
     "react-i18next": "^15.2.0",
     "react-icons": "^5.4.0",
+    "react-markdown": "^10.1.0",
     "react-responsive": "^10.0.0",
     "react-virtuoso": "^4.17.0",
     "react-window": "^1.8.11",

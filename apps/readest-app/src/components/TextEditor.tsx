@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useImperativeHandle, forwardRef } from 'react
 interface TextEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /** Called with caret offset and current value after change/selection moves. */
+  onCaretChange?: (caret: number, value: string) => void;
   onBlur?: () => void;
   onSave?: () => void;
   onEscape?: () => void;
@@ -29,6 +31,7 @@ const TextEditor = forwardRef<TextEditorRef, TextEditorProps>(
     {
       value,
       onChange,
+      onCaretChange,
       onBlur,
       onSave,
       onEscape,
@@ -98,9 +101,26 @@ const TextEditor = forwardRef<TextEditorRef, TextEditorProps>(
       }
     };
 
+    const emitCaret = (el: HTMLTextAreaElement) => {
+      onCaretChange?.(el.selectionStart, el.value);
+    };
+
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       adjustHeight();
       onChange(e.target.value);
+      emitCaret(e.target);
+    };
+
+    const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+      emitCaret(e.currentTarget);
+    };
+
+    const handleClick = (e: React.MouseEvent<HTMLTextAreaElement>) => {
+      emitCaret(e.currentTarget);
+    };
+
+    const handleKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      emitCaret(e.currentTarget);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -131,6 +151,9 @@ const TextEditor = forwardRef<TextEditorRef, TextEditorProps>(
         disabled={disabled}
         onChange={handleChange}
         onBlur={onBlur}
+        onSelect={handleSelect}
+        onClick={handleClick}
+        onKeyUp={handleKeyUp}
         onKeyDown={handleKeyDown}
         placeholder={placeholder || ''}
       />

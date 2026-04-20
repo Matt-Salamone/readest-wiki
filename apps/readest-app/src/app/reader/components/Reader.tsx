@@ -12,6 +12,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useNotebookStore } from '@/store/notebookStore';
+import { useWikiPanelStore } from '@/store/wikiPanelStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
@@ -112,6 +113,11 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
         (document.activeElement as HTMLElement)?.blur();
       } else if (getIsSideBarVisible() && !isSideBarPinned) {
         setSideBarVisible(false);
+      } else if (
+        useWikiPanelStore.getState().isWikiPanelVisible &&
+        !useWikiPanelStore.getState().isWikiPanelPinned
+      ) {
+        useWikiPanelStore.getState().close();
       } else if (getIsNotebookVisible() && !isNotebookPinned) {
         setNotebookVisible(false);
       } else {

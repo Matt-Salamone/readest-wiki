@@ -12,6 +12,9 @@ import { useLibraryStore } from '@/store/libraryStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useKeyDownActions } from '@/hooks/useKeyDownActions';
 import { BOOK_UNGROUPED_ID, BOOK_UNGROUPED_NAME } from '@/services/constants';
+import { WikiStore } from '@/services/wiki';
+import { useWikiStore } from '@/store/wikiStore';
+import { md5Fingerprint } from '@/utils/md5';
 import { getBreadcrumbs } from '../utils/libraryUtils';
 
 interface GroupingModalProps {
@@ -142,6 +145,17 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
         // Renaming existing group
         const oldGroupName = originalGroupName;
 
+        const wikiRenames = new Map<string, string>();
+        libraryBooks.forEach((book) => {
+          const gn = book.groupName;
+          if (!gn) return;
+          if (gn === oldGroupName) {
+            wikiRenames.set(oldGroupName, groupName);
+          } else if (gn.startsWith(oldGroupName + '/')) {
+            wikiRenames.set(gn, gn.replace(oldGroupName, groupName));
+          }
+        });
+
         // Update the group name for all books in this group and nested groups
         libraryBooks.forEach((book) => {
           if (book.groupName === oldGroupName) {
@@ -154,6 +168,24 @@ const GroupingModal: React.FC<GroupingModalProps> = ({
             book.updatedAt = Date.now();
           }
         });
+
+        if (appService && wikiRenames.size > 0) {
+          void (async () => {
+            const wikiStore = new WikiStore(appService);
+            const invalidateNamespace = useWikiStore.getState().invalidateNamespace;
+            for (const [oldPath, newPath] of wikiRenames) {
+              const o = oldPath.trim();
+              const n = newPath.trim();
+              try {
+                await wikiStore.renameGroupNamespace(o, n);
+              } catch (e) {
+                console.warn('[GroupingModal] wiki rename failed', o, n, e);
+              }
+              invalidateNamespace(`group:${md5Fingerprint(o)}`);
+              invalidateNamespace(`group:${md5Fingerprint(n)}`);
+            }
+          })();
+        }
 
         setLibrary([...libraryBooks]);
         appService?.saveLibraryBooks(libraryBooks);

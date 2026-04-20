@@ -13,6 +13,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
+import { useWikiCaptureStore } from '@/store/wikiCaptureStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useDeviceControlStore } from '@/store/deviceStore';
@@ -41,6 +42,7 @@ import TranslatorPopup from './TranslatorPopup';
 import useShortcuts from '@/hooks/useShortcuts';
 import ProofreadPopup from './ProofreadPopup';
 import ExportMarkdownDialog from './ExportMarkdownDialog';
+import WikiQuickCapture from '../wiki/WikiQuickCapture';
 
 const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const _ = useTranslation();
@@ -50,6 +52,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const { getConfig, saveConfig, getBookData, updateBooknotes } = useBookDataStore();
   const { getProgress, getView, getViewsById, getViewSettings } = useReaderStore();
   const { setNotebookVisible, setNotebookNewAnnotation } = useNotebookStore();
+  const openWikiCaptureFromSelection = useWikiCaptureStore((s) => s.openFromSelection);
   const { listenToNativeTouchEvents } = useDeviceControlStore();
 
   useNotesSync(bookKey);
@@ -514,6 +517,9 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       case 'tts':
         handleSpeakText(true);
         break;
+      case 'add-to-wiki':
+        handleAddToWiki();
+        break;
     }
   };
 
@@ -736,6 +742,22 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     handleDismissPopup();
   };
 
+  const handleAddToWiki = () => {
+    if (!selection || !selection.text?.trim()) return;
+    const cfi = view?.getCFI(selection.index, selection.range);
+    setShowAnnotPopup(false);
+    setShowWiktionaryPopup(false);
+    setShowWikipediaPopup(false);
+    setShowDeepLPopup(false);
+    setShowProofreadPopup(false);
+    openWikiCaptureFromSelection({
+      bookKey,
+      cfi: cfi ?? null,
+      quoteText: selection.text,
+      selectionRange: selection.range ?? null,
+    });
+  };
+
   const handleSearch = () => {
     if (!selection || !selection.text) return;
     handleDismissPopupAndSelection();
@@ -922,6 +944,12 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           Icon,
           onClick: handleAnnotate,
         };
+      case 'add-to-wiki':
+        return {
+          tooltipText: _(label),
+          Icon,
+          onClick: handleAddToWiki,
+        };
       case 'search':
         return {
           tooltipText: _(label),
@@ -1040,6 +1068,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           onExport={handleConfirmExport}
         />
       )}
+      <WikiQuickCapture bookKey={bookKey} />
     </div>
   );
 };

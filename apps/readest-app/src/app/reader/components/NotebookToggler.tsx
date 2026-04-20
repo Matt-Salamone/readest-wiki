@@ -5,6 +5,7 @@ import { useEnv } from '@/context/EnvContext';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useNotebookStore } from '@/store/notebookStore';
+import { useWikiPanelStore } from '@/store/wikiPanelStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import Button from '@/components/Button';
@@ -25,6 +26,7 @@ const NotebookToggler: React.FC<NotebookTogglerProps> = ({ bookKey }) => {
     if (appService?.isMobile) {
       setHoveredBookKey('');
     }
+    useWikiPanelStore.getState().close();
     if (sideBarBookKey === bookKey) {
       toggleNotebook();
     } else {
