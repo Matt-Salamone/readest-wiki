@@ -5,8 +5,9 @@
 # - The Xcode "Build Rust Code" phase runs `tauri ios xcode-script`, which talks to a small RPC
 #   server started only by `tauri ios build` / `tauri ios dev`. Invoking `xcodebuild` alone will
 #   panic (missing *-server-addr file). This workflow therefore uses `tauri ios build --ci`.
-# - If the Tauri export step fails for signing/provisioning, use repository secrets (e.g. Apple
-#   Developer / App Store Connect API per Tauri iOS docs) or a signing-based CI path.
+# - exportArchive requires a non-empty teamID in ExportOptions; we inject the public Team ID
+#   from tauri.conf.json via IOS_EXPORT_TEAM_ID while keeping CODE_SIGNING_ALLOWED=NO on the target.
+# - If export still fails for provisioning, add Apple credentials per Tauri iOS docs or use a signing-based CI path.
 # - Install the artifact with Sideloadly (or similar); it can re-sign with your Apple ID.
 
 name: iOS unsigned IPA
@@ -96,6 +97,10 @@ jobs:
       # Omitting developmentTeam leaves Xcode on automatic signing without a team → build error.
       # Tauri does not inject CODE_SIGNING_ALLOWED=NO here; patch project.pbxproj before ios build.
       - name: Patch iOS Xcode project for unsigned CI
+        env:
+          # Same value as bundle.iOS.developmentTeam in tauri.conf.json (public). Required so
+          # exportArchive gets a non-empty teamID; compile stays unsigned via CODE_SIGNING_ALLOWED=NO.
+          IOS_EXPORT_TEAM_ID: J5W48D69VR
         run: |
           set -euo pipefail
           PBX="$(find "${GITHUB_WORKSPACE}/apps/readest-app/src-tauri/gen/apple" -name project.pbxproj | head -n 1)"
