@@ -78,7 +78,8 @@ jobs:
           set -euo pipefail
           # Strip development team for CI: a team in tauri.conf.json makes Xcode expect
           # provisioning/signing; that clashes with unsigned xcodebuild and yields exit 65.
-          pnpm exec tauri ios init --ci --config src-tauri/tauri.ios-unsigned-ci.conf.json
+          # Inline JSON so CI does not depend on an extra tracked file or path resolution.
+          pnpm exec tauri ios init --ci --config '{"bundle":{"iOS":{"developmentTeam":null}}}'
 
       - name: Build frontend (out/ for Tauri bundle)
         working-directory: apps/readest-app
