@@ -5,9 +5,10 @@
 # - The Xcode "Build Rust Code" phase runs `tauri ios xcode-script`, which talks to a small RPC
 #   server started only by `tauri ios build` / `tauri ios dev`. Invoking `xcodebuild` alone will
 #   panic (missing *-server-addr file). This workflow therefore uses `tauri ios build --ci`.
-# - exportArchive requires a non-empty teamID in ExportOptions; we inject the public Team ID
-#   from tauri.conf.json via IOS_EXPORT_TEAM_ID while keeping CODE_SIGNING_ALLOWED=NO on the target.
-# - If export still fails for provisioning, add Apple credentials per Tauri iOS docs or use a signing-based CI path.
+# - exportArchive expects signing certs (e.g. "iOS Development") that hosted runners lack; the job
+#   then zips the .app from the .xcarchive (still unsigned) for Sideloadly-style re-signing.
+# - Optional repo variable IOS_EXPORT_TEAM_ID (10-char Apple Team ID) can improve ExportOptions;
+#   IPA output does not require export to succeed.
 # - Install the artifact with Sideloadly (or similar); it can re-sign with your Apple ID.
 
 name: iOS unsigned IPA
@@ -98,9 +99,9 @@ jobs:
       # Tauri does not inject CODE_SIGNING_ALLOWED=NO here; patch project.pbxproj before ios build.
       - name: Patch iOS Xcode project for unsigned CI
         env:
-          # Same value as bundle.iOS.developmentTeam in tauri.conf.json (public). Required so
-          # exportArchive gets a non-empty teamID; compile stays unsigned via CODE_SIGNING_ALLOWED=NO.
-          IOS_EXPORT_TEAM_ID: J5W48D69VR
+          # Optional: 10-character Apple Team ID (repo Settings → Variables). Helps ExportOptions;
+          # IPA is still produced from .xcarchive when export fails without certs.
+          IOS_EXPORT_TEAM_ID: ${{ vars.IOS_EXPORT_TEAM_ID }}
         run: |
           set -euo pipefail
           PBX="$(find "${GITHUB_WORKSPACE}/apps/readest-app/src-tauri/gen/apple" -name project.pbxproj | head -n 1)"
@@ -111,32 +112,55 @@ jobs:
           echo "Patching ${PBX}"
           python3 "${GITHUB_WORKSPACE}/apps/readest-app/scripts/patch-ios-pbxproj-unsigned-ci.py" "${PBX}"
 
-      - name: Build iOS with Tauri (archive + export)
+      - name: Build iOS and produce unsigned IPA
         working-directory: apps/readest-app
         env:
           CI: true
           NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           set -euo pipefail
-          # Same merge as ios init: no development team. Skip beforeBuildCommand because the
-          # previous step already produced ../out (tauri ios build would run pnpm build again).
           MERGE_JSON='{"bundle":{"iOS":{"developmentTeam":null}},"build":{"beforeBuildCommand":null}}'
-          pnpm exec tauri ios build --ci --config "${MERGE_JSON}"
 
-      - name: Stage IPA artifact
-        run: |
-          set -euo pipefail
-          BUILD_ROOT="${GITHUB_WORKSPACE}/apps/readest-app/src-tauri/gen/apple/build"
-          IPA_SRC="$(find "${BUILD_ROOT}" -name "*.ipa" -type f 2>/dev/null | head -n 1 || true)"
-          if [ -z "${IPA_SRC}" ]; then
-            echo "No .ipa found under ${BUILD_ROOT}"
-            find "${BUILD_ROOT}" -type f 2>/dev/null | head -n 80 || true
-            exit 1
-          fi
+          set +e
+          pnpm exec tauri ios build --ci --config "${MERGE_JSON}"
+          tauri_exit=$?
+          set -e
+
+          ROOT="${GITHUB_WORKSPACE}/apps/readest-app/src-tauri/gen/apple"
           DEST="${GITHUB_WORKSPACE}/readest-unsigned.ipa"
           rm -f "${DEST}"
-          cp -f "${IPA_SRC}" "${DEST}"
+
+          IPA_SRC="$(find "${ROOT}" -path "*/build/*" -name "*.ipa" -type f 2>/dev/null | head -n 1 || true)"
+          if [ -n "${IPA_SRC}" ] && [ -f "${IPA_SRC}" ]; then
+            echo "Using IPA from export: ${IPA_SRC}"
+            cp -f "${IPA_SRC}" "${DEST}"
+            ls -lh "${DEST}"
+            exit 0
+          fi
+
+          echo "No exported IPA (tauri ios build exit ${tauri_exit}); packaging .app from .xcarchive"
+          DD="${HOME}/Library/Developer/Xcode/DerivedData"
+          ARCH="$(find "${ROOT}" "${DD}" -type d -name "*.xcarchive" 2>/dev/null | head -n 1 || true)"
+          if [ -z "${ARCH}" ]; then
+            echo "No .xcarchive under ${ROOT} or ${DD}; cannot recover unsigned IPA."
+            find "${ROOT}" -type f 2>/dev/null | head -n 60 || true
+            exit "${tauri_exit}"
+          fi
+
+          APP="$(find "${ARCH}/Products/Applications" -maxdepth 1 -type d -name "*.app" 2>/dev/null | head -n 1 || true)"
+          if [ -z "${APP}" ]; then
+            echo "No .app under ${ARCH}/Products/Applications"
+            find "${ARCH}" -type d -name "*.app" 2>/dev/null | head -n 20 || true
+            exit "${tauri_exit}"
+          fi
+
+          STAGING="$(mktemp -d "${RUNNER_TEMP:-/tmp}/ipa-staging.XXXXXX")"
+          trap 'rm -rf "${STAGING}"' EXIT
+          mkdir -p "${STAGING}/Payload"
+          cp -R "${APP}" "${STAGING}/Payload/"
+          ( cd "${STAGING}" && zip -qr "${DEST}" Payload )
           ls -lh "${DEST}"
+          echo "Packaged unsigned IPA from ${ARCH} (export step failed or produced no IPA)."
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v5

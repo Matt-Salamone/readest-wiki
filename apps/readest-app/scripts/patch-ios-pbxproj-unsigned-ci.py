@@ -4,13 +4,9 @@ Patch a Tauri-generated iOS project.pbxproj for CI builds without Apple signing 
 
 - Forces manual, effectively-unsigned compile flags (CODE_SIGNING_ALLOWED=NO, etc.) so Xcode
   does not stop with "requires a development team" during the build phase.
-- Sets DEVELOPMENT_TEAM to a non-empty Apple Team ID so Tauri's synchronize step copies a
-  non-empty teamID into ExportOptions.plist; without it, exportArchive fails with:
-  'teamID should be non-empty'.
-
-Use the same Team ID string as bundle.iOS.developmentTeam in tauri.conf.json (public, not a
-secret). Signing is still disabled for the build; export may still need network/certs for
-full App Store export — for local re-signing workflows this is usually enough to produce an IPA.
+- Optionally sets DEVELOPMENT_TEAM (via IOS_EXPORT_TEAM_ID) so ExportOptions gets a non-empty
+  teamID; exportArchive often still fails on hosted runners without certs — CI then packages
+  the .app from the .xcarchive instead (see ios-unsigned-ipa workflow).
 """
 from __future__ import annotations
 
@@ -20,27 +16,21 @@ import sys
 from pathlib import Path
 
 
-def _require_team() -> str:
+def resolve_team() -> str:
     team = os.environ.get("IOS_EXPORT_TEAM_ID", "").strip().upper()
-    if not team or not re.fullmatch(r"[A-Z0-9]{10}", team):
-        print(
-            "error: set IOS_EXPORT_TEAM_ID to your 10-character Apple Developer Team ID "
-            "(same as bundle.iOS.developmentTeam in tauri.conf.json).",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    return team
+    if team and re.fullmatch(r"[A-Z0-9]{10}", team):
+        return team
+    return ""
 
 
 def patch(text: str, team: str) -> str:
-    team_line = f"DEVELOPMENT_TEAM = {team};"
     marker = "CODE_SIGNING_ALLOWED = NO;"
+    team_line = f"DEVELOPMENT_TEAM = {team};" if team else 'DEVELOPMENT_TEAM = "";'
 
     text = re.sub(r"CODE_SIGN_STYLE = Automatic;", "CODE_SIGN_STYLE = Manual;", text)
     text = re.sub(r'DEVELOPMENT_TEAM = "[^"]*";', team_line, text)
     text = re.sub(r"DEVELOPMENT_TEAM = [^;\n]+;", team_line, text)
 
-    # Already patched in a previous step: do not inject another signing block into every config.
     if marker in text:
         return text
 
@@ -65,7 +55,7 @@ def main() -> int:
     if len(sys.argv) != 2:
         print("usage: patch-ios-pbxproj-unsigned-ci.py <path-to-project.pbxproj>", file=sys.stderr)
         return 2
-    team = _require_team()
+    team = resolve_team()
     path = Path(sys.argv[1])
     if not path.is_file():
         print(f"error: not a file: {path}", file=sys.stderr)
