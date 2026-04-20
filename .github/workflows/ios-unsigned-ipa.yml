@@ -93,6 +93,19 @@ jobs:
           set -euo pipefail
           pnpm build
 
+      # Omitting developmentTeam leaves Xcode on automatic signing without a team → build error.
+      # Tauri does not inject CODE_SIGNING_ALLOWED=NO here; patch project.pbxproj before ios build.
+      - name: Patch iOS Xcode project for unsigned CI
+        run: |
+          set -euo pipefail
+          PBX="$(find "${GITHUB_WORKSPACE}/apps/readest-app/src-tauri/gen/apple" -name project.pbxproj | head -n 1)"
+          if [ -z "${PBX}" ] || [ ! -f "${PBX}" ]; then
+            echo "project.pbxproj not found under gen/apple"
+            exit 1
+          fi
+          echo "Patching ${PBX}"
+          python3 "${GITHUB_WORKSPACE}/apps/readest-app/scripts/patch-ios-pbxproj-unsigned-ci.py" "${PBX}"
+
       - name: Build iOS with Tauri (archive + export)
         working-directory: apps/readest-app
         env:
