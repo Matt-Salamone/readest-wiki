@@ -14,7 +14,7 @@ By seamlessly bridging the gap between an immersive reading experience and a rob
 
 ## Wiki Generation & Management
 
-- **Modular Content Blocks**: The system MUST structure wiki entries using "Blocks." A valid block MUST contain a tag and a specific book location identifier, plus at least one of the following: a user note or a highlighted quote.
+- **Modular Content Blocks**: The system MUST structure wiki entries using "Blocks." A valid block MUST contain a **section** (optional but recommended for grouping), a specific book location identifier, plus at least one of the following: a user note or a highlighted quote.
 - **Dynamic Linking**: The system MUST support bracket-based syntax (e.g., `[[Character Name]]`) for cross-referencing.
 - **Just-In-Time (JIT) Page Creation**: The system MUST generate "ghost" or placeholder pages for broken links, allowing users to tap a grayed-out link to instantly initialize that new wiki page.
 - **Cascading Title Updates**: The system MUST automatically update all corresponding inbound links across the entire wiki if a page title is renamed.
@@ -26,7 +26,7 @@ By seamlessly bridging the gap between an immersive reading experience and a rob
 
 # Expanded Feature Set
 
-- **Unified Tag & Entity Manager**: Beyond simple labeling, the system categorizes knowledge into structured page types (**Person, Location, Faction, Item, Concept, Lore, Misc**). Custom tags created on the fly are added to a global repository, ensuring consistency across a user's entire library and preventing duplicate/similar tags.
+- **Page types & sections**: Wiki **pages** are categorized by structured **page types** (**Person, Location, Faction, Item, Concept, Lore, Misc**). Each **block** may belong to one **section** (e.g. Appearance, Lore, History)—the heading under which blocks are grouped on that page. A **global section catalog** (shared across every wiki / namespace) supplies preset sections and accumulates user-created section names so labels stay consistent library-wide.
 - **Chronological Block Architecture**: Because every wiki block is strictly tied to a specific location in the book, the wiki inherently builds a chronological timeline of when the user learned specific information. This allows users to review a character's arc exactly as it unfolded in the text
 - **Dynamic Spoiler Protection (Re-read Mode)**: When a user restarts a book (or toggles "Re-read Mode"), the wiki acts as a temporal database. It progressively discloses information by automatically masking wiki blocks and pages that occur after the user's current reading location, allowing them to consult past notes without spoiling late-game revelations they may have forgotten.
   - This can piggyback off of the existing "status" feature (i.e., "Mark as Unread"/"Mark as Finished")
@@ -40,12 +40,12 @@ By seamlessly bridging the gap between an immersive reading experience and a rob
 ## Primary User Journey: The Discovery Loop
 
 1. **Read & Encounter**: The user begins reading. They encounter a new, complex magic system concept.
-2. **Capture & Categorize**: The user highlights the paragraph explaining the magic. The context menu appears. They select "Add to Wiki." A modal overlays the page where they type the page title, add their personal summary, and tag it as "Lore."
-3. **Connect & Expand**: While writing their note, the user surrounds a related character's name in brackets `[[Kaladin]]`.
-4. **Review & Navigate**: Days later, the user opens the Wiki Entry for that Lore. They tap the `[[Kaladin]]` link (which acts as a JIT trigger to create the character page) and review the chronological blocks of information they've gathered about him.
+2. **Capture & Categorize**: The user highlights the paragraph explaining the magic. The context menu appears. They select "Add to Wiki." A quick-capture overlay opens where they choose the wiki **page**, optional **section** (from the shared catalog or a new section name), and set the **page type** when creating a new page—e.g. **Lore** as the page type for a lore article.
+3. **Connect & Expand**: While writing their note, they surround a related character's name in brackets `[[Kaladin]]`.
+4. **Review & Navigate**: Days later, the user opens the Wiki Entry for that Lore page. They tap the `[[Kaladin]]` link (which acts as a JIT trigger to create the character page) and review the chronological blocks of information they've gathered about him, organized under **section** headings on that page.
 
 ## Key UI Screens
 
-- **The In-Reader Wiki Modal**: A non-intrusive overlay triggered by highlighting or searching. It allows for rapid data entry (saving quotes/notes) or quick retrieval without losing the user's place in the narrative context.
-- **The Wiki Entry Page**: The core knowledge hub. The top features a highly visible, editable title and a standard Markdown editor for high-level summaries. Below, content is grouped visually by Tag Headings. Under each heading are the Blocks, displaying the book location, the hideable text quote, and the user's personal note. _In Re-read or Imported mode, blocks ahead of the current reading position are blurred out with a "Keep reading to unlock" padlock icon._
-- **The Wiki Index**: A powerful directory view. Users can filter their vast database by visual icons representing the Page Types (Person, Location, etc.) and sort by the exact chronological order the concepts were introduced in the text.
+- **Quick capture (Phase 2) / In-reader Wiki Modal (later phases)**: A non-intrusive overlay triggered by highlighting, the header `+` button, or searching. It allows rapid data entry (saving quotes/notes with an optional **section**) or quick retrieval without losing the user's place in the narrative context.
+- **The Wiki Entry Page**: The core knowledge hub. The top features a highly visible, editable title and a standard Markdown editor for high-level summaries. Below, content is grouped visually by **section** headings. Under each heading are the Blocks, displaying the book location, the hideable text quote, and the user's personal note. _In Re-read or Imported mode, blocks ahead of the current reading position are blurred out with a "Keep reading to unlock" padlock icon._
+- **The Wiki Index**: A powerful directory view. Users can filter their vast database by visual icons representing the **page types** (Person, Location, etc.) and sort by the exact chronological order the concepts were introduced in the text.
