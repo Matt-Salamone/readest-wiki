@@ -60,7 +60,21 @@ declare global {
   }
 }
 
-const OS_TYPE = osType();
+function resolveTauriOsType(): string {
+  try {
+    const t = osType();
+    if (typeof t === 'string') return t;
+    if (t && typeof t === 'object' && 'os_type' in t) {
+      const v = (t as { os_type?: unknown }).os_type;
+      if (typeof v === 'string') return v;
+    }
+  } catch {
+    /* invoke / plugin not available (e.g. browser hitting Next dev) */
+  }
+  return getOSPlatform();
+}
+
+const OS_TYPE = resolveTauriOsType();
 
 const safeDecodePath = (input: string) => {
   try {
