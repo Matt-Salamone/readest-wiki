@@ -80,6 +80,9 @@ jobs:
 
       - name: Build frontend (out/ for Tauri bundle)
         working-directory: apps/readest-app
+        env:
+          # Next.js build can exceed Node's default ~2GB heap on macOS runners (OOM / SIGABRT).
+          NODE_OPTIONS: '--max-old-space-size=8192'
         run: |
           set -euo pipefail
           pnpm build
