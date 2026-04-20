@@ -40,6 +40,8 @@ export interface ReadSettings {
   isSideBarPinned: boolean;
   notebookWidth: string;
   isNotebookPinned: boolean;
+  wikiPanelWidth: string;
+  isWikiPanelPinned: boolean;
   notebookActiveTab: NotebookTab;
   autohideCursor: boolean;
   translationProvider: string;

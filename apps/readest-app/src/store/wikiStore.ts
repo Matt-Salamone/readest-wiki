@@ -20,6 +20,11 @@ interface WikiState {
   setActiveNamespace: (id: string | null) => void;
   invalidatePage: (namespaceId: string, pageId: string) => void;
   invalidateNamespace: (namespaceId: string) => void;
+  upsertPageInCache: (namespaceId: string, page: WikiPage) => void;
+  removePageFromCache: (namespaceId: string, pageId: string) => void;
+  setBlocksForPageInCache: (namespaceId: string, pageId: string, blocks: WikiBlock[]) => void;
+  removeBlockFromCache: (namespaceId: string, pageId: string, blockId: string) => void;
+  upsertTagInCache: (namespaceId: string, tag: WikiTag) => void;
 }
 
 export const useWikiStore = create<WikiState>((set, get) => ({
@@ -97,6 +102,90 @@ export const useWikiStore = create<WikiState>((set, get) => ({
       return {
         caches: next,
         activeNamespaceId: state.activeNamespaceId === namespaceId ? null : state.activeNamespaceId,
+      };
+    });
+  },
+
+  upsertPageInCache: (namespaceId: string, page: WikiPage) => {
+    set((state) => {
+      const c = state.caches[namespaceId];
+      if (!c) return state;
+      return {
+        caches: {
+          ...state.caches,
+          [namespaceId]: {
+            ...c,
+            pages: { ...c.pages, [page.id]: page },
+          },
+        },
+      };
+    });
+  },
+
+  removePageFromCache: (namespaceId: string, pageId: string) => {
+    set((state) => {
+      const c = state.caches[namespaceId];
+      if (!c) return state;
+      const nextPages = { ...c.pages };
+      delete nextPages[pageId];
+      const nextBlocks = { ...c.blocksByPage };
+      delete nextBlocks[pageId];
+      return {
+        caches: {
+          ...state.caches,
+          [namespaceId]: { ...c, pages: nextPages, blocksByPage: nextBlocks },
+        },
+      };
+    });
+  },
+
+  setBlocksForPageInCache: (namespaceId: string, pageId: string, blocks: WikiBlock[]) => {
+    set((state) => {
+      const c = state.caches[namespaceId];
+      if (!c) return state;
+      return {
+        caches: {
+          ...state.caches,
+          [namespaceId]: {
+            ...c,
+            blocksByPage: { ...c.blocksByPage, [pageId]: blocks },
+          },
+        },
+      };
+    });
+  },
+
+  removeBlockFromCache: (namespaceId: string, pageId: string, blockId: string) => {
+    set((state) => {
+      const c = state.caches[namespaceId];
+      if (!c) return state;
+      const list = c.blocksByPage[pageId];
+      if (!list) return state;
+      const nextList = list.filter((b) => b.id !== blockId);
+      return {
+        caches: {
+          ...state.caches,
+          [namespaceId]: {
+            ...c,
+            blocksByPage: { ...c.blocksByPage, [pageId]: nextList },
+          },
+        },
+      };
+    });
+  },
+
+  upsertTagInCache: (namespaceId: string, tag: WikiTag) => {
+    set((state) => {
+      const c = state.caches[namespaceId];
+      if (!c) return state;
+      return {
+        caches: {
+          ...state.caches,
+          [namespaceId]: {
+            ...c,
+            tags: { ...c.tags, [tag.id]: tag },
+          },
+        },
       };
     });
   },

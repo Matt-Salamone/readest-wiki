@@ -24,6 +24,7 @@ import WindowButtons from '@/components/WindowButtons';
 import QuickActionMenu from './annotator/QuickActionMenu';
 import SidebarToggler from './SidebarToggler';
 import BookmarkToggler from './BookmarkToggler';
+import WikiPanelToggler from './wiki/WikiPanelToggler';
 import WikiQuickCaptureToggler from './WikiQuickCaptureToggler';
 import NotebookToggler from './NotebookToggler';
 import SettingsToggler from './SettingsToggler';
@@ -275,6 +276,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({
 
         <div className='header-tools-end bg-base-100 z-20 ms-auto flex h-full min-w-max items-center gap-x-4 ps-2 max-[350px]:gap-x-2'>
           {!isHeaderCompact && <SettingsToggler bookKey={bookKey} />}
+          <WikiPanelToggler bookKey={bookKey} />
           <WikiQuickCaptureToggler bookKey={bookKey} />
           <NotebookToggler bookKey={bookKey} />
           <Dropdown

@@ -7,6 +7,8 @@ import { WikiStore, wikiTitleToSlug } from '@/services/wiki';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useWikiStore } from '@/store/wikiStore';
 import { useWikiCaptureStore } from '@/store/wikiCaptureStore';
+import { useWikiPanelStore } from '@/store/wikiPanelStore';
+import { useNotebookStore } from '@/store/notebookStore';
 import type { WikiPage, WikiPageType, WikiSectionCatalogEntry } from '@/types/wiki';
 import { useAddToWiki } from '@/app/reader/hooks/useAddToWiki';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -38,6 +40,9 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
   const cfi = useWikiCaptureStore((s) => s.cfi);
   const quoteText = useWikiCaptureStore((s) => s.quoteText);
   const closeCapture = useWikiCaptureStore((s) => s.close);
+
+  const openWikiPanel = useWikiPanelStore((s) => s.open);
+  const setNotebookVisible = useNotebookStore((s) => s.setNotebookVisible);
 
   const { addToWiki } = useAddToWiki(bookKey);
 
@@ -158,7 +163,7 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
 
     setSaving(true);
     try {
-      await addToWiki({
+      const result = await addToWiki({
         targetPage:
           target.kind === 'existing'
             ? target
@@ -172,6 +177,8 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
         noteMarkdown: noteMarkdown.trim() ? noteMarkdown : null,
         tagName: sectionTag,
       });
+      setNotebookVisible(false);
+      openWikiPanel(bookKey, result.page.id);
       closeCapture();
       resetForm();
     } catch (e) {
@@ -266,11 +273,27 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
             ) : null}
 
             {pageSearch.trim() && slugMatchPage ? (
-              <p className='text-base-content/70 mb-3 text-xs'>
+              <p className='text-base-content/70 mb-2 text-xs'>
                 {_(
                   'This title matches an existing page; your block will be added there. For a new page, change the title so it does not match an existing one.',
                 )}
               </p>
+            ) : null}
+
+            {selectedPageId || slugMatchPage ? (
+              <button
+                type='button'
+                className='btn btn-outline btn-sm mb-3 w-full'
+                onClick={() => {
+                  const pageId = selectedPageId ?? slugMatchPage!.id;
+                  setNotebookVisible(false);
+                  openWikiPanel(bookKey, pageId);
+                  closeCapture();
+                  resetForm();
+                }}
+              >
+                {_('Open in wiki')}
+              </button>
             ) : null}
 
             {showPageType ? (
