@@ -3,6 +3,9 @@ import type { Book } from '@/types/book';
 import type { WikiNamespace, WikiPage, WikiBlock, WikiTag } from '@/types/wiki';
 import type { WikiStore } from '@/services/wiki';
 
+/** SQLite (Turso/libsql) only allows one in-flight connection per wiki DB — queue loads to avoid "concurrent use forbidden". */
+let wikiNamespaceLoadChain: Promise<unknown> = Promise.resolve();
+
 export interface WikiNamespaceCache {
   namespace: WikiNamespace;
   pages: Record<string, WikiPage>;
@@ -24,42 +27,46 @@ export const useWikiStore = create<WikiState>((set, get) => ({
   caches: {},
 
   loadNamespace: async (store: WikiStore, book: Book) => {
-    const namespace = await store.resolveNamespaceForBook(book);
-    const namespaceId = namespace.id;
+    const task = async () => {
+      const namespace = await store.resolveNamespaceForBook(book);
+      const namespaceId = namespace.id;
 
-    const [pages, tags] = await Promise.all([
-      store.listPages(namespaceId),
-      store.listTags(namespaceId),
-    ]);
+      const pages = await store.listPages(namespaceId);
+      const tags = await store.listTags(namespaceId);
 
-    const pagesRecord: Record<string, WikiPage> = {};
-    for (const p of pages) {
-      pagesRecord[p.id] = p;
-    }
+      const pagesRecord: Record<string, WikiPage> = {};
+      for (const p of pages) {
+        pagesRecord[p.id] = p;
+      }
 
-    const blocksByPage: Record<string, WikiBlock[]> = {};
-    for (const p of pages) {
-      blocksByPage[p.id] = await store.listBlocksForPage(p.id);
-    }
+      const blocksByPage: Record<string, WikiBlock[]> = {};
+      for (const p of pages) {
+        blocksByPage[p.id] = await store.listBlocksForPage(p.id);
+      }
 
-    const tagsRecord: Record<string, WikiTag> = {};
-    for (const t of tags) {
-      tagsRecord[t.id] = t;
-    }
+      const tagsRecord: Record<string, WikiTag> = {};
+      for (const t of tags) {
+        tagsRecord[t.id] = t;
+      }
 
-    const cache: WikiNamespaceCache = {
-      namespace,
-      pages: pagesRecord,
-      blocksByPage,
-      tags: tagsRecord,
+      const cache: WikiNamespaceCache = {
+        namespace,
+        pages: pagesRecord,
+        blocksByPage,
+        tags: tagsRecord,
+      };
+
+      set((state) => ({
+        activeNamespaceId: namespaceId,
+        caches: { ...state.caches, [namespaceId]: cache },
+      }));
+
+      return namespace;
     };
 
-    set((state) => ({
-      activeNamespaceId: namespaceId,
-      caches: { ...state.caches, [namespaceId]: cache },
-    }));
-
-    return namespace;
+    const run = wikiNamespaceLoadChain.then(() => task());
+    wikiNamespaceLoadChain = run.catch(() => {});
+    return run;
   },
 
   setActiveNamespace: (id: string | null) => set({ activeNamespaceId: id }),

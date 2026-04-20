@@ -20,7 +20,8 @@ export interface AddToWikiInput {
   cfi: string | null;
   quoteText: string | null;
   noteMarkdown: string | null;
-  tagNames: string[];
+  /** Single section heading tag per block (optional); groups the block under that heading on the wiki page */
+  tagName: string | null;
 }
 
 export function useAddToWiki(bookKey: string) {
@@ -65,10 +66,9 @@ export function useAddToWiki(bookKey: string) {
       }
 
       const tagIds: string[] = [];
-      for (const raw of input.tagNames) {
-        const tagName = raw.trim();
-        if (!tagName) continue;
-        const tag = await wikiService.createTag({ namespaceId, tagName });
+      const sectionTag = input.tagName?.trim();
+      if (sectionTag) {
+        const tag = await wikiService.createTag({ namespaceId, tagName: sectionTag });
         tagIds.push(tag.id);
       }
 

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 
 import { useEnv } from '@/context/EnvContext';
 import TextEditor from '@/components/TextEditor';
@@ -26,6 +26,7 @@ interface WikiQuickCaptureProps {
 }
 
 const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
+  const sectionDatalistId = useId();
   const _ = useTranslation();
   const { appService } = useEnv();
   const getBookData = useBookDataStore((s) => s.getBookData);
@@ -43,9 +44,8 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
 
   const [pageSearch, setPageSearch] = useState('');
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const [creatingNew, setCreatingNew] = useState(false);
   const [newPageType, setNewPageType] = useState<WikiPageType>('Misc');
-  const [tagsInput, setTagsInput] = useState('');
+  const [sectionTagInput, setSectionTagInput] = useState('');
   const [noteMarkdown, setNoteMarkdown] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,9 +56,8 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
   const resetForm = useCallback(() => {
     setPageSearch('');
     setSelectedPageId(null);
-    setCreatingNew(false);
     setNewPageType('Misc');
-    setTagsInput('');
+    setSectionTagInput('');
     setNoteMarkdown('');
     setLoadError(null);
   }, []);
@@ -115,10 +114,16 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
     return pagesList.find((p) => p.titleSlug === slug);
   }, [pagesList, pageSearch]);
 
+  const existingSectionSuggestions = useMemo(() => {
+    if (!cache) return [];
+    return Object.values(cache.tags)
+      .map((t) => t.tagName)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [cache]);
+
   const handlePickPage = (page: WikiPage) => {
     setSelectedPageId(page.id);
     setPageSearch(page.title);
-    setCreatingNew(false);
   };
 
   const handleSave = async () => {
@@ -136,7 +141,7 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
 
     if (selectedPageId) {
       target = { kind: 'existing', pageId: selectedPageId };
-    } else if (slugMatchPage && !creatingNew) {
+    } else if (slugMatchPage) {
       target = { kind: 'existing', pageId: slugMatchPage.id };
     } else {
       if (!titleTrim) return;
@@ -147,10 +152,7 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
       };
     }
 
-    const tagNames = tagsInput
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
+    const sectionTag = sectionTagInput.trim() || null;
 
     setSaving(true);
     try {
@@ -166,7 +168,7 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
         cfi,
         quoteText,
         noteMarkdown: noteMarkdown.trim() ? noteMarkdown : null,
-        tagNames,
+        tagName: sectionTag,
       });
       closeCapture();
       resetForm();
@@ -184,13 +186,9 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
   };
 
   const titleTrim = pageSearch.trim();
-  const canSave =
-    Boolean(selectedPageId) ||
-    Boolean(titleTrim && slugMatchPage && !creatingNew) ||
-    Boolean(titleTrim && !slugMatchPage) ||
-    Boolean(titleTrim && slugMatchPage && creatingNew);
+  const canSave = Boolean(selectedPageId) || Boolean(titleTrim);
 
-  const showPageType = Boolean(titleTrim) && !selectedPageId && (!slugMatchPage || creatingNew);
+  const showPageType = Boolean(titleTrim) && !selectedPageId && !slugMatchPage;
 
   if (!visible) return null;
 
@@ -265,23 +263,12 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
               </ul>
             ) : null}
 
-            {pageSearch.trim() ? (
-              <div className='mb-3 flex flex-col gap-2'>
-                {slugMatchPage && !creatingNew ? (
-                  <p className='text-base-content/70 text-xs'>
-                    {_('Matches existing page; save will attach to that page.')}
-                  </p>
-                ) : null}
-                {slugMatchPage && !creatingNew ? (
-                  <button
-                    type='button'
-                    className='btn btn-outline btn-sm'
-                    onClick={() => setCreatingNew(true)}
-                  >
-                    {_('Create new page instead')} (&quot;{pageSearch.trim()}&quot;)
-                  </button>
-                ) : null}
-              </div>
+            {pageSearch.trim() && slugMatchPage ? (
+              <p className='text-base-content/70 mb-3 text-xs'>
+                {_(
+                  'This title matches an existing page; your block will be added there. For a new page, change the title so it does not match an existing one.',
+                )}
+              </p>
             ) : null}
 
             {showPageType ? (
@@ -302,15 +289,26 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
             ) : null}
 
             <label className='label'>
-              <span className='label-text'>{_('Tags (comma-separated)')}</span>
+              <span className='label-text'>{_('Section')}</span>
             </label>
+            <p className='text-base-content/70 mb-2 text-xs'>
+              {_('Optional. Blocks with the same section appear under one heading on this page.')}
+            </p>
             <input
               type='text'
               className='input input-bordered mb-3 w-full'
-              placeholder={_('e.g. Character, Theory')}
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
+              list={existingSectionSuggestions.length > 0 ? sectionDatalistId : undefined}
+              placeholder={_('e.g. Appearances')}
+              value={sectionTagInput}
+              onChange={(e) => setSectionTagInput(e.target.value)}
             />
+            {existingSectionSuggestions.length > 0 ? (
+              <datalist id={sectionDatalistId}>
+                {existingSectionSuggestions.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            ) : null}
 
             <label className='label'>
               <span className='label-text'>{_('Note')}</span>
