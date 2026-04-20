@@ -205,6 +205,18 @@ function linkKeyBlockId(sourceBlockId: string | null): string {
   return sourceBlockId ?? '';
 }
 
+function parseBookHashesJson(json: string): string[] {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((x): x is string => typeof x === 'string');
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
 export class WikiStore {
   private appService: AppService;
 
@@ -222,15 +234,16 @@ export class WikiStore {
   }
 
   async resolveNamespaceForBook(book: Book): Promise<WikiNamespace> {
-    const seriesName = book.metadata?.series?.trim();
+    const groupName = book.groupName?.trim();
+    const groupId = book.groupId?.trim();
     let id: string;
     let kind: WikiNamespaceKind;
     let title: string;
 
-    if (seriesName) {
-      id = md5Fingerprint(`series:${seriesName}`);
-      kind = 'series';
-      title = seriesName;
+    if (groupName && groupId) {
+      id = `group:${groupId}`;
+      kind = 'group';
+      title = groupName;
     } else {
       id = `book:${book.metaHash ?? book.hash}`;
       kind = 'standalone';
@@ -285,6 +298,77 @@ export class WikiStore {
         [id],
       );
       return rowToNamespace(rows[0]!);
+    });
+  }
+
+  /**
+   * When the user renames a library group, move the wiki namespace id/title so the same wiki stays attached.
+   * Uses the same id scheme as the library: `group:` + md5Fingerprint(full group path).
+   */
+  async renameGroupNamespace(oldGroupName: string, newGroupName: string): Promise<void> {
+    const oldTrim = oldGroupName.trim();
+    const newTrim = newGroupName.trim();
+    if (!oldTrim || !newTrim || oldTrim === newTrim) {
+      return;
+    }
+
+    const oldId = `group:${md5Fingerprint(oldTrim)}`;
+    const newId = `group:${md5Fingerprint(newTrim)}`;
+    if (oldId === newId) {
+      return;
+    }
+
+    const now = Date.now();
+
+    return this.withDb(async (db) => {
+      const oldRows = await db.select<WikiNamespaceRow>(
+        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+         FROM wiki_namespaces WHERE id = ?`,
+        [oldId],
+      );
+      if (oldRows.length === 0) {
+        return;
+      }
+
+      const newRows = await db.select<WikiNamespaceRow>(
+        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+         FROM wiki_namespaces WHERE id = ?`,
+        [newId],
+      );
+
+      if (newRows.length > 0) {
+        const oldHashes = parseBookHashesJson(oldRows[0]!.book_hashes_json);
+        const newHashes = parseBookHashesJson(newRows[0]!.book_hashes_json);
+        const merged = [...new Set([...newHashes, ...oldHashes])];
+
+        await db.execute(`UPDATE wiki_pages SET namespace_id = ? WHERE namespace_id = ?`, [
+          newId,
+          oldId,
+        ]);
+        await db.execute(`UPDATE wiki_tags SET namespace_id = ? WHERE namespace_id = ?`, [
+          newId,
+          oldId,
+        ]);
+        await db.execute(
+          `UPDATE wiki_namespaces SET book_hashes_json = ?, updated_at = ? WHERE id = ?`,
+          [JSON.stringify(merged), now, newId],
+        );
+        await db.execute(`DELETE FROM wiki_namespaces WHERE id = ?`, [oldId]);
+        return;
+      }
+
+      await db.execute(`UPDATE wiki_pages SET namespace_id = ? WHERE namespace_id = ?`, [
+        newId,
+        oldId,
+      ]);
+      await db.execute(`UPDATE wiki_tags SET namespace_id = ? WHERE namespace_id = ?`, [
+        newId,
+        oldId,
+      ]);
+      await db.execute(
+        `UPDATE wiki_namespaces SET id = ?, title = ?, kind = ?, updated_at = ? WHERE id = ?`,
+        [newId, newTrim, 'group', now, oldId],
+      );
     });
   }
 

@@ -8,7 +8,7 @@ By seamlessly bridging the gap between an immersive reading experience and a rob
 
 ## Immersive Reading Experience
 
-- **Series Grouping**: The system MUST allow users to categorize books as standalones or group them into custom or existing series. This can piggyback off of the existing grouping feature.
+- **Series Grouping**: The system MUST allow users to categorize books as standalones or group them into custom or existing series. Implementation piggybacks on the library **Group Books** feature (`groupId` / `groupName`): books in the same manual group share one wiki namespace; ungrouped books each use a standalone wiki keyed by book identity. File-level EPUB series metadata alone does not define wiki scope.
 - Need to add “Add to Wiki” to the text selection context menu.
 - Wiki block quotes should take advantage of the existing in-text note highlights.
 

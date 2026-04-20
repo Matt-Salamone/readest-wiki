@@ -45,7 +45,9 @@ describe('WikiStore', () => {
     await sharedDb.close();
   });
 
-  test('resolveNamespaceForBook: series uses md5Fingerprint id', async () => {
+  test('resolveNamespaceForBook: group uses group: prefix + groupId', async () => {
+    const groupName = 'Stormlight';
+    const groupId = md5Fingerprint(groupName);
     const book: Book = {
       hash: 'h1',
       format: 'EPUB',
@@ -53,21 +55,23 @@ describe('WikiStore', () => {
       author: 'A',
       createdAt: 1,
       updatedAt: 1,
+      groupId,
+      groupName,
       metadata: {
         title: 'Book 1',
         author: 'A',
         language: 'en',
-        series: 'Stormlight',
+        series: 'Should be ignored',
       },
     };
     const ns = await store.resolveNamespaceForBook(book);
-    expect(ns.id).toBe(md5Fingerprint('series:Stormlight'));
-    expect(ns.kind).toBe('series');
-    expect(ns.title).toBe('Stormlight');
+    expect(ns.id).toBe(`group:${groupId}`);
+    expect(ns.kind).toBe('group');
+    expect(ns.title).toBe(groupName);
     expect(ns.bookHashes).toContain('h1');
   });
 
-  test('resolveNamespaceForBook: standalone uses book:metaHash when present', async () => {
+  test('resolveNamespaceForBook: standalone uses book:metaHash when present and ignores metadata.series', async () => {
     const book: Book = {
       hash: 'file-hash',
       metaHash: 'meta-abc',
@@ -76,6 +80,12 @@ describe('WikiStore', () => {
       author: 'A',
       createdAt: 1,
       updatedAt: 1,
+      metadata: {
+        title: 'Standalone',
+        author: 'A',
+        language: 'en',
+        series: 'Some Series',
+      },
     };
     const ns = await store.resolveNamespaceForBook(book);
     expect(ns.id).toBe('book:meta-abc');
@@ -96,7 +106,9 @@ describe('WikiStore', () => {
     expect(ns.id).toBe('book:only-hash');
   });
 
-  test('resolveNamespaceForBook: appends second book hash to same namespace', async () => {
+  test('resolveNamespaceForBook: group appends second book hash to same namespace', async () => {
+    const groupName = 'X';
+    const groupId = md5Fingerprint(groupName);
     const book1: Book = {
       hash: 'b1',
       format: 'EPUB',
@@ -104,12 +116,8 @@ describe('WikiStore', () => {
       author: 'A',
       createdAt: 1,
       updatedAt: 1,
-      metadata: {
-        title: 'T',
-        author: 'A',
-        language: 'en',
-        series: 'X',
-      },
+      groupId,
+      groupName,
     };
     const book2: Book = {
       ...book1,
@@ -118,6 +126,52 @@ describe('WikiStore', () => {
     await store.resolveNamespaceForBook(book1);
     const ns = await store.resolveNamespaceForBook(book2);
     expect(ns.bookHashes.sort()).toEqual(['b1', 'b2'].sort());
+  });
+
+  test('renameGroupNamespace moves namespace id and pages', async () => {
+    const oldName = 'OldGroup';
+    const newName = 'NewGroup';
+    const oldId = `group:${md5Fingerprint(oldName)}`;
+    const newId = `group:${md5Fingerprint(newName)}`;
+
+    const book: Book = {
+      hash: 'h1',
+      format: 'EPUB',
+      title: 'T',
+      author: 'A',
+      createdAt: 1,
+      updatedAt: 1,
+      groupId: md5Fingerprint(oldName),
+      groupName: oldName,
+    };
+    const ns = await store.resolveNamespaceForBook(book);
+    expect(ns.id).toBe(oldId);
+
+    const page = await store.createPage({
+      namespaceId: ns.id,
+      title: 'PageOne',
+      pageType: 'Person',
+    });
+
+    await store.renameGroupNamespace(oldName, newName);
+
+    const atNew = await sharedDb.select<{ id: string }>(
+      `SELECT id FROM wiki_namespaces WHERE id = ?`,
+      [newId],
+    );
+    expect(atNew.length).toBe(1);
+    const atOld = await sharedDb.select<{ id: string }>(
+      `SELECT id FROM wiki_namespaces WHERE id = ?`,
+      [oldId],
+    );
+    expect(atOld.length).toBe(0);
+
+    const moved = await store.getPage(page.id);
+    expect(moved?.namespaceId).toBe(newId);
+
+    await store.renameGroupNamespace(newName, newName);
+    const again = await store.getPage(page.id);
+    expect(again?.namespaceId).toBe(newId);
   });
 
   test('page and block CRUD round-trip', async () => {

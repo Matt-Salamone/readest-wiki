@@ -96,10 +96,10 @@ Phase 2 adds **Add to Wiki** from the selection toolbar, a **Quick Capture** dia
 
 ## 9. Edge cases
 
-| Step | Action                     | Expected                                                                                  |
-| ---- | -------------------------- | ----------------------------------------------------------------------------------------- |
-| 9.1  | **PDF** / fixed-layout     | Capture may omit xpointer conversion; save should not hard-crash (CFI-only path).         |
-| 9.2  | Series vs standalone books | Wiki namespace follows existing `resolveNamespaceForBook` rules (series vs `book:` hash). |
+| Step | Action                          | Expected                                                                                                                                                                                                                                                                                                                                      |
+| ---- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 9.1  | **PDF** / fixed-layout          | Capture may omit xpointer conversion; save should not hard-crash (CFI-only path).                                                                                                                                                                                                                                                             |
+| 9.2  | **Grouped** vs standalone books | Books in a **library group** (`Group Books`) share one wiki namespace (`group:` + group id). Ungrouped books use a standalone `book:` namespace (`metaHash` when present, else file `hash`). EPUB `metadata.series` does **not** affect wiki scope. To reset dev wiki data after namespace rule changes, delete `wiki.db` and reopen the app. |
 
 ---
 

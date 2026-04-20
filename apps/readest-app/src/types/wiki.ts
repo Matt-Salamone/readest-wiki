@@ -1,9 +1,9 @@
-export type WikiNamespaceKind = 'series' | 'standalone';
+export type WikiNamespaceKind = 'group' | 'standalone';
 
 export type WikiPageType = 'Person' | 'Location' | 'Faction' | 'Item' | 'Concept' | 'Lore' | 'Misc';
 
 export interface WikiNamespace {
-  /** md5Fingerprint('series:'+name) or 'book:'+metaHash/hash */
+  /** `group:`+Book.groupId (md5 of library group path) or `book:`+metaHash|hash */
   id: string;
   kind: WikiNamespaceKind;
   title: string;
