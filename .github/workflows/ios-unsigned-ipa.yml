@@ -76,7 +76,9 @@ jobs:
         working-directory: apps/readest-app
         run: |
           set -euo pipefail
-          pnpm exec tauri ios init --ci
+          # Strip development team for CI: a team in tauri.conf.json makes Xcode expect
+          # provisioning/signing; that clashes with unsigned xcodebuild and yields exit 65.
+          pnpm exec tauri ios init --ci --config src-tauri/tauri.ios-unsigned-ci.conf.json
 
       - name: Build frontend (out/ for Tauri bundle)
         working-directory: apps/readest-app
@@ -92,6 +94,7 @@ jobs:
         working-directory: apps/readest-app/src-tauri/gen/apple
         run: |
           set -euo pipefail
+          set -o pipefail
           shopt -s nullglob
           projects=( *.xcodeproj )
           if [ "${#projects[@]}" -eq 0 ]; then
@@ -123,6 +126,7 @@ jobs:
           rm -rf "${DD}"
           mkdir -p "${DD}"
 
+          XB_LOG="${GITHUB_WORKSPACE}/xcodebuild-ios-unsigned.log"
           xcodebuild \
             -project "${PROJ}" \
             -scheme "${SCHEME}" \
@@ -134,12 +138,16 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
-            build
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build 2>&1 | tee "${XB_LOG}"
 
-          APP_PATH="$(find "${DD}" -type d -name "*.app" -path "*/Release-iphoneos/*" | head -n 1)"
+          # Prefer Release output; fall back to Debug if the scheme maps the build oddly.
+          APP_PATH="$(find "${DD}/Build/Products" -type d -name "*.app" \( -path "*/Release-iphoneos/*" -o -path "*/Debug-iphoneos/*" \) 2>/dev/null | head -n 1 || true)"
           if [ -z "${APP_PATH}" ]; then
-            echo "No .app found under ${DD}/**/Release-iphoneos"
-            find "${DD}" -name "*.app" -maxdepth 8 || true
+            echo "No .app under ${DD}/Build/Products/*-iphoneos; full .app list:"
+            find "${DD}" -type d -name "*.app" 2>/dev/null | head -n 20 || true
+            echo "---- tail xcodebuild log ----"
+            tail -n 200 "${XB_LOG}" || true
             exit 1
           fi
           echo "app_path=${APP_PATH}" >> "${GITHUB_OUTPUT}"
