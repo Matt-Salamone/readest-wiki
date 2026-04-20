@@ -60,14 +60,14 @@ Phase 3 adds a **Wiki** side panel (resize, pin, overlay dismiss), **page list +
 
 ## 5. Blocks
 
-| Step | Action                                  | Expected                                                                           |
-| ---- | --------------------------------------- | ---------------------------------------------------------------------------------- |
-| 5.1  | Sections                                | Blocks grouped under section headings (from Phase 2 tag); **Ungrouped** when none. |
-| 5.2  | **Hide quotes** toggle                  | Quote bodies hidden entirely when on.                                              |
-| 5.3  | Per-block **Show quote**                | Expands/collapses quote when quotes not globally hidden.                           |
-| 5.4  | **Jump**                                | Reader navigates to block CFI when present.                                        |
-| 5.5  | Note View/Edit + `[[...]]` autocomplete | Same behavior as summary; saving updates links.                                    |
-| 5.6  | **Delete** block                        | Block removed after confirm.                                                       |
+| Step | Action                                    | Expected                                                                                                       |
+| ---- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 5.1  | Sections                                  | Blocks grouped under section headings (from Phase 2 tag); **Ungrouped** when none.                             |
+| 5.2  | Quote default visibility                  | **No note**: quote **shown** by default. **Has note**: quote **hidden** by default; **Show quote** reveals it. |
+| 5.3  | Per-block **Show quote** / **Hide quote** | Each block toggles independently after the default above.                                                      |
+| 5.4  | **Jump**                                  | Reader navigates to block CFI when present.                                                                    |
+| 5.5  | Note View/Edit + `[[...]]` autocomplete   | Same behavior as summary; saving updates links.                                                                |
+| 5.6  | **Delete** block                          | Block removed after confirm.                                                                                   |
 
 ---
 

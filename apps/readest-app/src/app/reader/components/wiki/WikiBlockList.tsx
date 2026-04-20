@@ -5,6 +5,7 @@ import TextEditor from '@/components/TextEditor';
 import type { TextEditorRef } from '@/components/TextEditor';
 import { WikiStore } from '@/services/wiki';
 import type { WikiBlock, WikiPage, WikiTag } from '@/types/wiki';
+import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
 import { useLibraryStore } from '@/store/libraryStore';
@@ -15,6 +16,8 @@ import {
 import { getTextareaCaretOffset } from '@/utils/textareaCaret';
 import WikiMarkdown from './WikiMarkdown';
 import WikiBracketSuggest from './WikiBracketSuggest';
+import { confirmWikiDeletion } from '@/app/reader/components/wiki/wikiConfirmDelete';
+import { WIKI_TEXTAREA_FOCUS_WRAP } from '@/app/reader/components/wiki/wikiEditorClasses';
 
 interface WikiBlockListProps {
   bookKey: string;
@@ -25,8 +28,6 @@ interface WikiBlockListProps {
   pagesBySlug: Map<string, WikiPage>;
   pagesList: WikiPage[];
   wiki: WikiStore;
-  hideAllQuotes: boolean;
-  onHideAllQuotesChange: (hide: boolean) => void;
   onReload: () => Promise<void>;
   onNavigateToPage: (pageId: string) => void;
 }
@@ -40,12 +41,11 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
   pagesBySlug,
   pagesList,
   wiki,
-  hideAllQuotes,
-  onHideAllQuotesChange,
   onReload,
   onNavigateToPage,
 }) => {
   const _ = useTranslation();
+  const { appService } = useEnv();
   const getView = useReaderStore((s) => s.getView);
   const getBookByHash = useLibraryStore((s) => s.getBookByHash);
 
@@ -115,8 +115,11 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
       suggestPos = { top: coords.top + 4, left: coords.left };
     }
 
-    const expanded = quoteExpanded[block.id] ?? false;
-    const showQuote = Boolean(block.quoteText) && !hideAllQuotes;
+    const hasQuote = Boolean(block.quoteText?.trim());
+    const hasNote = Boolean(block.noteMarkdown?.trim());
+    /** No note → quote visible by default; has note → quote collapsed until expanded (user can still toggle). */
+    const toggledQuote = quoteExpanded[block.id];
+    const quoteVisible = toggledQuote !== undefined ? toggledQuote : !hasNote;
 
     const bookTitle = getBookByHash(block.bookHash)?.title ?? block.bookHash.slice(0, 8);
 
@@ -136,17 +139,17 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
           </button>
         </div>
 
-        {showQuote ? (
+        {hasQuote ? (
           <div className='mb-2'>
             <button
               type='button'
               className='text-base-content/70 mb-1 text-xs underline'
-              onClick={() => setQuoteExpanded((s) => ({ ...s, [block.id]: !expanded }))}
+              onClick={() => setQuoteExpanded((s) => ({ ...s, [block.id]: !quoteVisible }))}
             >
-              {expanded ? _('Hide quote') : _('Show quote')}
+              {quoteVisible ? _('Hide quote') : _('Show quote')}
             </button>
-            {expanded ? (
-              <blockquote className='border-base-content/20 text-sm italic opacity-90'>
+            {quoteVisible ? (
+              <blockquote className='border-base-content/30 border-s-2 ps-3 text-sm italic leading-relaxed'>
                 {block.quoteText}
               </blockquote>
             ) : null}
@@ -186,10 +189,9 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
             type='button'
             className='btn btn-ghost btn-xs text-error'
             onClick={async () => {
-              if (window.confirm(_('Delete this wiki block?'))) {
-                await wiki.softDeleteBlock(block.id);
-                await onReload();
-              }
+              if (!(await confirmWikiDeletion(appService, _('Delete this wiki block?')))) return;
+              await wiki.softDeleteBlock(block.id);
+              await onReload();
             }}
           >
             {_('Delete')}
@@ -204,7 +206,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
             className='text-sm'
           />
         ) : (
-          <div className='relative'>
+          <div className={clsx('relative', WIKI_TEXTAREA_FOCUS_WRAP)}>
             <TextEditor
               ref={(r) => {
                 editorRefs.current[block.id] = r;
@@ -256,18 +258,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
 
   return (
     <div className='mt-4'>
-      <div className='mb-3 flex items-center justify-between gap-2'>
-        <h3 className='text-sm font-semibold'>{_('Blocks')}</h3>
-        <label className='label cursor-pointer gap-2 py-0'>
-          <span className='label-text text-xs'>{_('Hide quotes')}</span>
-          <input
-            type='checkbox'
-            className='toggle toggle-sm'
-            checked={hideAllQuotes}
-            onChange={(e) => onHideAllQuotesChange(e.target.checked)}
-          />
-        </label>
-      </div>
+      <h3 className='mb-3 text-sm font-semibold'>{_('Blocks')}</h3>
 
       {blocks.length === 0 ? (
         <p className='text-base-content/60 text-sm'>{_('No blocks on this page yet.')}</p>

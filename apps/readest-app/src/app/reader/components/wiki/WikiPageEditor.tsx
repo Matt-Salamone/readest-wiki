@@ -8,6 +8,7 @@ import type { TextEditorRef } from '@/components/TextEditor';
 import { WikiStore } from '@/services/wiki';
 import type { WikiBlock, WikiPage, WikiPageType, WikiTag } from '@/types/wiki';
 import { eventDispatcher } from '@/utils/event';
+import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useWikiPanelStore } from '@/store/wikiPanelStore';
 import WikiMarkdown from '@/app/reader/components/wiki/WikiMarkdown';
@@ -19,6 +20,8 @@ import {
   getWikiBracketSuggestContext,
 } from '@/app/reader/hooks/useWikiLinkSuggest';
 import { getTextareaCaretOffset } from '@/utils/textareaCaret';
+import { confirmWikiDeletion } from '@/app/reader/components/wiki/wikiConfirmDelete';
+import { WIKI_TEXTAREA_FOCUS_WRAP } from '@/app/reader/components/wiki/wikiEditorClasses';
 
 interface WikiPageEditorProps {
   bookKey: string;
@@ -42,14 +45,13 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
   onReload,
 }) => {
   const _ = useTranslation();
+  const { appService } = useEnv();
   const setActivePageId = useWikiPanelStore((s) => s.setActivePageId);
 
   const [titleDraft, setTitleDraft] = useState('');
   const [summaryMode, setSummaryMode] = useState<'view' | 'edit'>('view');
   const [summaryDraft, setSummaryDraft] = useState('');
   const [summaryCaret, setSummaryCaret] = useState(0);
-  const [hideAllQuotes, setHideAllQuotes] = useState(true);
-
   const summaryRef = useRef<TextEditorRef | null>(null);
 
   const page = pageId ? pages[pageId] : null;
@@ -134,7 +136,14 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
 
   const handleDeletePage = async () => {
     if (!wiki || !page) return;
-    if (!window.confirm(_('Delete this wiki page and keep linked text unchanged?'))) return;
+    if (
+      !(await confirmWikiDeletion(
+        appService,
+        _('Delete this wiki page and keep linked text unchanged?'),
+      ))
+    ) {
+      return;
+    }
     await wiki.softDeletePage(page.id);
     setActivePageId(null);
     await reloadWiki();
@@ -244,7 +253,7 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
             className='text-sm'
           />
         ) : (
-          <div className='relative'>
+          <div className={clsx('relative', WIKI_TEXTAREA_FOCUS_WRAP)}>
             <TextEditor
               ref={summaryRef}
               value={summaryDraft}
@@ -303,8 +312,6 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
         pagesBySlug={pagesBySlug}
         pagesList={pagesList}
         wiki={wiki}
-        hideAllQuotes={hideAllQuotes}
-        onHideAllQuotesChange={setHideAllQuotes}
         onReload={reloadWiki}
         onNavigateToPage={handleNavigateToPage}
       />
