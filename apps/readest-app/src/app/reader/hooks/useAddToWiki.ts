@@ -66,10 +66,13 @@ export function useAddToWiki(bookKey: string) {
       }
 
       const tagIds: string[] = [];
-      const sectionTag = input.tagName?.trim();
-      if (sectionTag) {
-        const tag = await wikiService.createTag({ namespaceId, tagName: sectionTag });
-        tagIds.push(tag.id);
+      const rawSection = input.tagName?.trim();
+      if (rawSection) {
+        const canonical = await wikiService.ensureSectionInCatalog(rawSection);
+        if (canonical) {
+          const tag = await wikiService.createTag({ namespaceId, tagName: canonical });
+          tagIds.push(tag.id);
+        }
       }
 
       const noteMd = input.noteMarkdown?.trim() ? input.noteMarkdown.trim() : null;

@@ -269,4 +269,21 @@ describe('WikiStore', () => {
     await expect(store.getPageByTitleSlug(ns.id, 'oldname')).resolves.toBeNull();
     await expect(store.getPageByTitleSlug(ns.id, 'newname')).resolves.not.toBeNull();
   });
+
+  test('listSectionCatalog: includes seeded sections in sort order', async () => {
+    const rows = await store.listSectionCatalog();
+    expect(rows.length).toBeGreaterThanOrEqual(8);
+    expect(rows[0]?.name).toBe('Appearance');
+    expect(rows[1]?.name).toBe('Lore');
+    expect(rows[2]?.name).toBe('History');
+  });
+
+  test('ensureSectionInCatalog: appends new names and matches existing case-insensitively', async () => {
+    const first = await store.ensureSectionInCatalog('MyCustom');
+    expect(first).toBe('MyCustom');
+    const second = await store.ensureSectionInCatalog('mycustom');
+    expect(second).toBe('MyCustom');
+    const rows = await store.listSectionCatalog();
+    expect(rows.filter((r) => r.name === 'MyCustom').length).toBe(1);
+  });
 });

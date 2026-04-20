@@ -36,14 +36,16 @@ Phase 2 adds **Add to Wiki** from the selection toolbar, a **Quick Capture** dia
 
 ---
 
-## 3. Section (single tag per block)
+## 3. Section (single tag per block, shared catalog)
 
-| Step | Action                             | Expected                                                              |
-| ---- | ---------------------------------- | --------------------------------------------------------------------- |
-| 3.1  | **Section** field                  | Single line only — not comma-separated multiple tags.                 |
-| 3.2  | Optional description under Section | Explains blocks group under one heading per section name.             |
-| 3.3  | After tags exist in the namespace  | Browser **datalist** may suggest existing section names.              |
-| 3.4  | Save with a section name           | Block is stored with **at most one** tag id (heading for Phase 3 UI). |
+| Step | Action                                           | Expected                                                                                       |
+| ---- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| 3.1  | **Section** dropdown                             | Built-in options (Appearance, Lore, History, …) plus custom sections saved earlier.            |
+| 3.2  | Open quick capture from another book/series wiki | **Same catalog** — sections are stored globally in `wiki.db`, not per wiki namespace.          |
+| 3.3  | **New section** text field                       | Saving with a new name adds it to the catalog; it appears in the dropdown on the next capture. |
+| 3.4  | Both **New section** and dropdown set            | **New section** overrides the menu (per on-screen hint).                                       |
+| 3.5  | Save with a section                              | Block has **one** tag id for that section (Phase 3 uses it as the heading).                    |
+| 3.6  | Optional                                         | Same section typed with different casing reuses the stored spelling (case-insensitive match).  |
 
 ---
 
@@ -105,7 +107,7 @@ Phase 2 adds **Add to Wiki** from the selection toolbar, a **Quick Capture** dia
 
 - [ ] Add to Wiki from selection → Quick Capture → Save → success path
 - [ ] Slug match → attaches to existing page; **no** duplicate same-title page affordance
-- [ ] **One** section field per block
+- [ ] Section **dropdown** + optional **new section**; catalog shared across all wikis
 - [ ] Header `+` → note-only / no-quote capture
 - [ ] Quote save → highlight visible
 - [ ] No concurrent DB error on dialog open

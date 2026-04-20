@@ -6,6 +6,7 @@ import type {
   WikiNamespaceKind,
   WikiPage,
   WikiPageType,
+  WikiSectionCatalogEntry,
   WikiTag,
 } from '@/types/wiki';
 import type { AppService } from '@/types/system';
@@ -103,6 +104,13 @@ type WikiLinkRow = {
   source_block_id: string;
 };
 
+type WikiSectionCatalogRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: number;
+};
+
 function rowToNamespace(row: WikiNamespaceRow): WikiNamespace {
   let bookHashes: string[] = [];
   try {
@@ -181,6 +189,15 @@ function rowToLink(row: WikiLinkRow): WikiLink {
     sourcePageId: row.source_page_id,
     targetPageId: row.target_page_id,
     sourceBlockId: row.source_block_id === '' ? null : row.source_block_id,
+  };
+}
+
+function rowToSectionCatalog(row: WikiSectionCatalogRow): WikiSectionCatalogEntry {
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
   };
 }
 
@@ -548,6 +565,50 @@ export class WikiStore {
         [namespaceId],
       );
       return rows.map(rowToTag);
+    });
+  }
+
+  /**
+   * Global section labels for block grouping — one catalog shared by every wiki namespace.
+   */
+  async listSectionCatalog(): Promise<WikiSectionCatalogEntry[]> {
+    return this.withDb(async (db) => {
+      const rows = await db.select<WikiSectionCatalogRow>(
+        `SELECT id, name, sort_order, created_at FROM wiki_section_catalog
+         ORDER BY sort_order ASC, name COLLATE NOCASE ASC`,
+      );
+      return rows.map(rowToSectionCatalog);
+    });
+  }
+
+  /**
+   * Ensures a section name exists in the global catalog (case-insensitive duplicate → stored casing).
+   * Call before {@link createTag} when saving a block section.
+   */
+  async ensureSectionInCatalog(rawName: string): Promise<string | null> {
+    const trimmed = rawName.trim();
+    if (!trimmed) return null;
+
+    return this.withDb(async (db) => {
+      const existing = await db.select<{ name: string }>(
+        `SELECT name FROM wiki_section_catalog WHERE lower(name) = lower(?)`,
+        [trimmed],
+      );
+      if (existing[0]) {
+        return existing[0].name;
+      }
+
+      const maxRows = await db.select<{ m: number | null }>(
+        `SELECT MAX(sort_order) AS m FROM wiki_section_catalog`,
+      );
+      const nextOrder = (maxRows[0]?.m ?? -1) + 1;
+      const now = Date.now();
+      const id = crypto.randomUUID();
+      await db.execute(
+        `INSERT INTO wiki_section_catalog (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)`,
+        [id, trimmed, nextOrder, now],
+      );
+      return trimmed;
     });
   }
 

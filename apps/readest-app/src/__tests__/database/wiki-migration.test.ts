@@ -26,6 +26,7 @@ describe('wiki schema migration', () => {
       'wiki_links',
       'wiki_namespaces',
       'wiki_pages',
+      'wiki_section_catalog',
       'wiki_tags',
     ]);
 
@@ -38,10 +39,11 @@ describe('wiki schema migration', () => {
       'idx_wiki_links_target_page_id',
       'idx_wiki_pages_namespace_id',
       'idx_wiki_pages_namespace_title_slug',
+      'idx_wiki_section_catalog_sort',
     ]);
 
     const uv = await db.select<{ user_version: number }>('PRAGMA user_version');
-    expect(uv[0]?.user_version).toBe(1);
+    expect(uv[0]?.user_version).toBe(2);
   });
 
   it('is idempotent on second migrate()', async () => {
@@ -49,6 +51,6 @@ describe('wiki schema migration', () => {
     await migrate(db, getMigrations('wiki'));
 
     const uv = await db.select<{ user_version: number }>('PRAGMA user_version');
-    expect(uv[0]?.user_version).toBe(1);
+    expect(uv[0]?.user_version).toBe(2);
   });
 });

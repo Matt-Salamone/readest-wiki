@@ -60,3 +60,11 @@ export interface WikiLink {
   /** null when link is from page summary (stored as '' in DB for PK) */
   sourceBlockId: string | null;
 }
+
+/** Global section labels shared across all wiki namespaces (quick capture + future UI). */
+export interface WikiSectionCatalogEntry {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+}

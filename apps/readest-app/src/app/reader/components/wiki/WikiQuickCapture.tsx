@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useEnv } from '@/context/EnvContext';
 import TextEditor from '@/components/TextEditor';
@@ -7,7 +7,7 @@ import { WikiStore, wikiTitleToSlug } from '@/services/wiki';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useWikiStore } from '@/store/wikiStore';
 import { useWikiCaptureStore } from '@/store/wikiCaptureStore';
-import type { WikiPage, WikiPageType } from '@/types/wiki';
+import type { WikiPage, WikiPageType, WikiSectionCatalogEntry } from '@/types/wiki';
 import { useAddToWiki } from '@/app/reader/hooks/useAddToWiki';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -26,7 +26,6 @@ interface WikiQuickCaptureProps {
 }
 
 const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
-  const sectionDatalistId = useId();
   const _ = useTranslation();
   const { appService } = useEnv();
   const getBookData = useBookDataStore((s) => s.getBookData);
@@ -45,7 +44,9 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
   const [pageSearch, setPageSearch] = useState('');
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [newPageType, setNewPageType] = useState<WikiPageType>('Misc');
-  const [sectionTagInput, setSectionTagInput] = useState('');
+  const [sectionCatalogEntries, setSectionCatalogEntries] = useState<WikiSectionCatalogEntry[]>([]);
+  const [sectionSelect, setSectionSelect] = useState('');
+  const [sectionNewInput, setSectionNewInput] = useState('');
   const [noteMarkdown, setNoteMarkdown] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,7 +58,8 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
     setPageSearch('');
     setSelectedPageId(null);
     setNewPageType('Misc');
-    setSectionTagInput('');
+    setSectionSelect('');
+    setSectionNewInput('');
     setNoteMarkdown('');
     setLoadError(null);
   }, []);
@@ -78,8 +80,13 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
       setLoading(true);
       setLoadError(null);
       try {
-        await loadNamespace(new WikiStore(appService), book);
+        const wiki = new WikiStore(appService);
+        await loadNamespace(wiki, book);
         if (cancelled) return;
+        const sections = await wiki.listSectionCatalog();
+        if (!cancelled) {
+          setSectionCatalogEntries(sections);
+        }
       } catch (e) {
         if (!cancelled) {
           setLoadError(e instanceof Error ? e.message : String(e));
@@ -114,13 +121,6 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
     return pagesList.find((p) => p.titleSlug === slug);
   }, [pagesList, pageSearch]);
 
-  const existingSectionSuggestions = useMemo(() => {
-    if (!cache) return [];
-    return Object.values(cache.tags)
-      .map((t) => t.tagName)
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [cache]);
-
   const handlePickPage = (page: WikiPage) => {
     setSelectedPageId(page.id);
     setPageSearch(page.title);
@@ -152,7 +152,9 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
       };
     }
 
-    const sectionTag = sectionTagInput.trim() || null;
+    const customSection = sectionNewInput.trim();
+    const pickedSection = sectionSelect.trim();
+    const sectionTag = customSection || pickedSection || null;
 
     setSaving(true);
     try {
@@ -292,23 +294,37 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
               <span className='label-text'>{_('Section')}</span>
             </label>
             <p className='text-base-content/70 mb-2 text-xs'>
-              {_('Optional. Blocks with the same section appear under one heading on this page.')}
+              {_(
+                'Optional. Pick a shared section heading for this block. The same catalog is used for every wiki.',
+              )}
+            </p>
+            <select
+              className='select select-bordered mb-2 w-full'
+              value={sectionSelect}
+              onChange={(e) => setSectionSelect(e.target.value)}
+            >
+              <option value=''>{_('None')}</option>
+              {sectionCatalogEntries.map((e) => (
+                <option key={e.id} value={e.name}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+            <label className='label'>
+              <span className='label-text'>{_('New section')}</span>
+            </label>
+            <p className='text-base-content/70 mb-2 text-xs'>
+              {_(
+                'Type a new name to save it to the shared list. If filled, this overrides the menu above.',
+              )}
             </p>
             <input
               type='text'
               className='input input-bordered mb-3 w-full'
-              list={existingSectionSuggestions.length > 0 ? sectionDatalistId : undefined}
-              placeholder={_('e.g. Appearances')}
-              value={sectionTagInput}
-              onChange={(e) => setSectionTagInput(e.target.value)}
+              placeholder={_('Custom section name')}
+              value={sectionNewInput}
+              onChange={(e) => setSectionNewInput(e.target.value)}
             />
-            {existingSectionSuggestions.length > 0 ? (
-              <datalist id={sectionDatalistId}>
-                {existingSectionSuggestions.map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
-            ) : null}
 
             <label className='label'>
               <span className='label-text'>{_('Note')}</span>

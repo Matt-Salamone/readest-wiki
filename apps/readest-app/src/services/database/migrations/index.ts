@@ -80,6 +80,30 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         CREATE INDEX IF NOT EXISTS idx_wiki_links_target_page_id ON wiki_links (target_page_id);
       `,
     },
+    {
+      name: '2026042001_wiki_section_catalog',
+      sql: `
+        CREATE TABLE IF NOT EXISTS wiki_section_catalog (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_wiki_section_catalog_sort
+        ON wiki_section_catalog (sort_order, name COLLATE NOCASE);
+
+        INSERT OR IGNORE INTO wiki_section_catalog (id, name, sort_order, created_at) VALUES
+          ('wiki-sec-appearance', 'Appearance', 0, 0),
+          ('wiki-sec-lore', 'Lore', 1, 0),
+          ('wiki-sec-history', 'History', 2, 0),
+          ('wiki-sec-relationships', 'Relationships', 3, 0),
+          ('wiki-sec-theory', 'Theory', 4, 0),
+          ('wiki-sec-timeline', 'Timeline', 5, 0),
+          ('wiki-sec-notes', 'Notes', 6, 0),
+          ('wiki-sec-concepts', 'Concepts', 7, 0);
+      `,
+    },
   ],
   'hardcover-sync': [
     {
