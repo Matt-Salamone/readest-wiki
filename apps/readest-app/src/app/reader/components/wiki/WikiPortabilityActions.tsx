@@ -162,7 +162,7 @@ const WikiPortabilityActions: React.FC<WikiPortabilityActionsProps> = ({
         disabled={busy}
         onClick={() => void handleExport()}
       >
-        <RiDownloadLine className='h-4 w-4' />
+        <RiUploadLine className='h-4 w-4' />
       </button>
       <button
         type='button'
@@ -171,7 +171,7 @@ const WikiPortabilityActions: React.FC<WikiPortabilityActionsProps> = ({
         disabled={busy}
         onClick={() => void handleImport()}
       >
-        <RiUploadLine className='h-4 w-4' />
+        <RiDownloadLine className='h-4 w-4' />
       </button>
     </div>
   );
