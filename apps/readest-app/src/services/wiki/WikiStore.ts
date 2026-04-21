@@ -18,9 +18,6 @@ import { closeWikiDatabaseCache, getOrOpenWikiDatabase } from './wikiDbCache';
 import { md5Fingerprint } from '@/utils/md5';
 import { getAppVersion } from '@/utils/version';
 
-const DB_SCHEMA = 'wiki';
-const DB_PATH = 'wiki.db';
-
 const WIKI_LINK_REGEX = /\[\[([^\]\r\n]+?)\]\]/g;
 
 /** Escape regex metacharacters for use in RegExp constructor. */

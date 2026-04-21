@@ -3,5 +3,6 @@ interface TauriInternals {
 }
 
 interface Window {
-  __TAURI_INTERNALS__: TauriInternals;
+  /** Present only inside the Tauri webview (tests may bridge from `window.top`). */
+  __TAURI_INTERNALS__?: TauriInternals;
 }

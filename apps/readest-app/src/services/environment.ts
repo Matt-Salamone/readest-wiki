@@ -4,8 +4,6 @@ import { READEST_NODE_BASE_URL, READEST_WEB_BASE_URL } from './constants';
 declare global {
   interface Window {
     __READEST_CLI_ACCESS?: boolean;
-    /** Present only inside the Tauri webview (Tauri v2). */
-    __TAURI_INTERNALS__?: unknown;
   }
 }
 

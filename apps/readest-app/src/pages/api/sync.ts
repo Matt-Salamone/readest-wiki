@@ -57,12 +57,18 @@ const wikiTransforms: Record<
   WikiTableName,
   (rec: unknown, userId: string) => Record<string, unknown>
 > = {
-  wiki_namespaces: transformWikiNamespaceToDB,
-  wiki_pages: transformWikiPageToDB,
-  wiki_blocks: transformWikiBlockToDB,
-  wiki_tags: transformWikiTagToDB,
-  wiki_links: transformWikiLinkToDB,
-  wiki_section_catalog: transformWikiSectionCatalogToDB,
+  wiki_namespaces: (rec, userId) =>
+    transformWikiNamespaceToDB(rec, userId) as unknown as Record<string, unknown>,
+  wiki_pages: (rec, userId) =>
+    transformWikiPageToDB(rec, userId) as unknown as Record<string, unknown>,
+  wiki_blocks: (rec, userId) =>
+    transformWikiBlockToDB(rec, userId) as unknown as Record<string, unknown>,
+  wiki_tags: (rec, userId) =>
+    transformWikiTagToDB(rec, userId) as unknown as Record<string, unknown>,
+  wiki_links: (rec, userId) =>
+    transformWikiLinkToDB(rec, userId) as unknown as Record<string, unknown>,
+  wiki_section_catalog: (rec, userId) =>
+    transformWikiSectionCatalogToDB(rec, userId) as unknown as Record<string, unknown>,
 };
 
 const wikiPrimaryKeys: Record<WikiTableName, string[]> = {
@@ -233,13 +239,14 @@ export async function GET(req: NextRequest) {
       }
 
       const w = results.wiki!;
-      if (table === 'wiki_namespaces') w.namespaces = allRecords as WikiSyncResult['namespaces'];
-      if (table === 'wiki_pages') w.pages = allRecords as WikiSyncResult['pages'];
-      if (table === 'wiki_blocks') w.blocks = allRecords as WikiSyncResult['blocks'];
-      if (table === 'wiki_tags') w.tags = allRecords as WikiSyncResult['tags'];
-      if (table === 'wiki_links') w.links = allRecords as WikiSyncResult['links'];
+      if (table === 'wiki_namespaces')
+        w.namespaces = allRecords as unknown as WikiSyncResult['namespaces'];
+      if (table === 'wiki_pages') w.pages = allRecords as unknown as WikiSyncResult['pages'];
+      if (table === 'wiki_blocks') w.blocks = allRecords as unknown as WikiSyncResult['blocks'];
+      if (table === 'wiki_tags') w.tags = allRecords as unknown as WikiSyncResult['tags'];
+      if (table === 'wiki_links') w.links = allRecords as unknown as WikiSyncResult['links'];
       if (table === 'wiki_section_catalog')
-        w.section_catalog = allRecords as WikiSyncResult['section_catalog'];
+        w.section_catalog = allRecords as unknown as WikiSyncResult['section_catalog'];
     };
 
     if (!typeParamNorm || typeParamNorm === 'books') {
@@ -479,20 +486,20 @@ export async function POST(req: NextRequest) {
         const serverData = serverMap.get(key);
 
         if (!serverData) {
-          (dbRec as { updated_at?: string }).updated_at = new Date().toISOString();
+          dbRec['updated_at'] = new Date().toISOString();
           toInsert.push(dbRec);
         } else {
-          const clientUpdatedAt = dbRec.updated_at
-            ? new Date(dbRec.updated_at as string).getTime()
+          const clientUpdatedAt = dbRec['updated_at']
+            ? new Date(dbRec['updated_at'] as string).getTime()
             : 0;
-          const serverUpdatedAt = serverData.updated_at
-            ? new Date(serverData.updated_at as string).getTime()
+          const serverUpdatedAt = serverData['updated_at']
+            ? new Date(serverData['updated_at'] as string).getTime()
             : 0;
-          const clientDeletedAt = dbRec.deleted_at
-            ? new Date(dbRec.deleted_at as string).getTime()
+          const clientDeletedAt = dbRec['deleted_at']
+            ? new Date(dbRec['deleted_at'] as string).getTime()
             : 0;
-          const serverDeletedAt = serverData.deleted_at
-            ? new Date(serverData.deleted_at as string).getTime()
+          const serverDeletedAt = serverData['deleted_at']
+            ? new Date(serverData['deleted_at'] as string).getTime()
             : 0;
           const clientIsNewer =
             clientDeletedAt > serverDeletedAt || clientUpdatedAt > serverUpdatedAt;

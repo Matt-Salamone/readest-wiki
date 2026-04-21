@@ -118,14 +118,13 @@ const WikiPanel: React.FC = () => {
     [envConfig, setWikiPanelWidthStore],
   );
 
-  const { handleResizeStart: handleDragStart, handleResizeKeyDown: handleResizeKeyDown } =
-    usePanelResize({
-      side: 'end',
-      minWidth: MIN_WIKI_WIDTH,
-      maxWidth: MAX_WIKI_WIDTH,
-      getWidth: () => wikiPanelWidth,
-      onResize: handleWikiResize,
-    });
+  const { handleResizeStart: handleDragStart, handleResizeKeyDown } = usePanelResize({
+    side: 'end',
+    minWidth: MIN_WIKI_WIDTH,
+    maxWidth: MAX_WIKI_WIDTH,
+    getWidth: () => wikiPanelWidth,
+    onResize: handleWikiResize,
+  });
 
   const handleTogglePin = () => {
     const next = !isWikiPanelPinned;

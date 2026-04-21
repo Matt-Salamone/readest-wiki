@@ -27,8 +27,8 @@ async function putToSupabaseSignedUploadUrl(
     'x-upsert': String(fileOptions.upsert),
   };
   if (anonKey) {
-    headers.apikey = anonKey;
-    headers.Authorization = `Bearer ${anonKey}`;
+    headers['apikey'] = anonKey;
+    headers['Authorization'] = `Bearer ${anonKey}`;
   }
 
   const res = await fetch(signedUrl, {
