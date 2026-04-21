@@ -13,11 +13,14 @@ import { WikiStore } from '@/services/wiki';
 import { eventDispatcher } from '@/utils/event';
 import { useEnv } from '@/context/EnvContext';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useWikiPanelStore } from '@/store/wikiPanelStore';
 import { useWikiStore } from '@/store/wikiStore';
+
+import { buildWikiSpoilerContext } from '@/app/reader/utils/wikiSpoiler';
 
 import WikiPanelHeader from './WikiPanelHeader';
 import WikiPageEditor from './WikiPageEditor';
@@ -47,11 +50,14 @@ const WikiPanel: React.FC = () => {
 
   const getBookData = useBookDataStore((s) => s.getBookData);
   const loadNamespace = useWikiStore((s) => s.loadNamespace);
-  const invalidateNamespace = useWikiStore((s) => s.invalidateNamespace);
   const caches = useWikiStore((s) => s.caches);
   const activeNamespaceId = useWikiStore((s) => s.activeNamespaceId);
 
   const getViewSettings = useReaderStore((s) => s.getViewSettings);
+  const library = useLibraryStore((s) => s.library);
+  const progressLocation = useReaderStore((s) =>
+    wikiBookKey ? (s.viewStates[wikiBookKey]?.progress?.location ?? null) : null,
+  );
 
   const { safeAreaInsets, systemUIVisible, statusBarHeight, updateAppTheme } = useThemeStore();
 
@@ -59,6 +65,15 @@ const WikiPanel: React.FC = () => {
   const viewSettings = wikiBookKey ? getViewSettings(wikiBookKey) : undefined;
 
   const cache = activeNamespaceId ? caches[activeNamespaceId] : undefined;
+
+  const spoilerCtx = useMemo(() => {
+    if (!cache?.namespace || !book) return null;
+    return buildWikiSpoilerContext(cache.namespace, library, {
+      activeBookKey: wikiBookKey,
+      activeBook: book,
+      activeLocation: progressLocation,
+    });
+  }, [cache?.namespace, library, wikiBookKey, book, progressLocation]);
 
   const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(false);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
@@ -87,10 +102,8 @@ const WikiPanel: React.FC = () => {
 
   const reloadWiki = useCallback(async () => {
     if (!wiki || !book) return;
-    const ns = activeNamespaceId;
-    if (ns) invalidateNamespace(ns);
     await loadNamespace(wiki, book);
-  }, [wiki, book, activeNamespaceId, invalidateNamespace, loadNamespace]);
+  }, [wiki, book, loadNamespace]);
 
   const handleWikiResize = useCallback(
     (newWidth: string) => {
@@ -241,6 +254,9 @@ const WikiPanel: React.FC = () => {
             isPinned={isWikiPanelPinned}
             handleClose={() => closeWikiPanel()}
             handleTogglePin={handleTogglePin}
+            namespace={cache?.namespace}
+            wiki={wiki}
+            onReloadWiki={reloadWiki}
           />
         </div>
 
@@ -258,6 +274,7 @@ const WikiPanel: React.FC = () => {
                 wiki={wiki}
                 onSelectPage={(id) => setActivePageId(id)}
                 onReload={reloadWiki}
+                spoilerCtx={spoilerCtx}
               />
 
               <WikiPageEditor
@@ -269,6 +286,7 @@ const WikiPanel: React.FC = () => {
                 blocks={activePageId ? (cache.blocksByPage[activePageId] ?? []) : []}
                 tagsById={cache.tags}
                 onReload={reloadWiki}
+                spoilerCtx={spoilerCtx}
               />
             </>
           )}

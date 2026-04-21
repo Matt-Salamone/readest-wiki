@@ -104,22 +104,29 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
           ('wiki-sec-concepts', 'Concepts', 7, 0);
       `,
     },
-  ],
-  'hardcover-sync': [
     {
-      name: '2026032901_hardcover_note_mappings',
+      name: '2026042101_wiki_namespace_spoiler_override',
       sql: `
-        CREATE TABLE IF NOT EXISTS hardcover_note_mappings (
-          book_hash TEXT NOT NULL,
-          note_id TEXT NOT NULL,
-          hardcover_journal_id INTEGER NOT NULL,
-          payload_hash TEXT NOT NULL,
-          synced_at INTEGER NOT NULL,
-          PRIMARY KEY (book_hash, note_id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_hardcover_note_mappings_synced_at
-        ON hardcover_note_mappings (synced_at);
+        ALTER TABLE wiki_namespaces ADD COLUMN spoiler_override TEXT;
+      `,
+    },
+    {
+      name: '2026042201_wiki_sync_timestamps',
+      sql: `
+        ALTER TABLE wiki_tags ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE wiki_tags ADD COLUMN deleted_at INTEGER;
+        ALTER TABLE wiki_links ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE wiki_links ADD COLUMN deleted_at INTEGER;
+        ALTER TABLE wiki_section_catalog ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE wiki_section_catalog ADD COLUMN deleted_at INTEGER;
+        UPDATE wiki_tags SET updated_at = COALESCE(updated_at, 0);
+        UPDATE wiki_links SET updated_at = 0;
+        UPDATE wiki_section_catalog SET updated_at = created_at WHERE updated_at = 0;
+        CREATE INDEX IF NOT EXISTS idx_wiki_tags_updated_at ON wiki_tags (updated_at);
+        CREATE INDEX IF NOT EXISTS idx_wiki_links_updated_at ON wiki_links (updated_at);
+        CREATE INDEX IF NOT EXISTS idx_wiki_section_catalog_updated_at ON wiki_section_catalog (updated_at);
+        CREATE INDEX IF NOT EXISTS idx_wiki_pages_updated_at ON wiki_pages (updated_at);
+        CREATE INDEX IF NOT EXISTS idx_wiki_blocks_updated_at ON wiki_blocks (updated_at);
       `,
     },
   ],

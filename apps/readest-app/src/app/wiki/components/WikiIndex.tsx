@@ -1,13 +1,15 @@
 'use client';
 
 import clsx from 'clsx';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { LuBookOpen } from 'react-icons/lu';
 
+import WindowButtons from '@/components/WindowButtons';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTheme } from '@/hooks/useTheme';
+import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useThemeStore } from '@/store/themeStore';
 import { useWikiStore } from '@/store/wikiStore';
 import { WikiStore } from '@/services/wiki';
@@ -22,7 +24,16 @@ const WikiIndex: React.FC = () => {
   const router = useAppRouter();
   const searchParams = useSearchParams();
   const { appService } = useEnv();
-  const { safeAreaInsets: insets, isRoundedWindow } = useThemeStore();
+  const {
+    safeAreaInsets: insets,
+    isRoundedWindow,
+    systemUIVisible,
+    statusBarHeight,
+  } = useThemeStore();
+  const { isTrafficLightVisible } = useTrafficLight();
+
+  const headerRef = useRef<HTMLDivElement>(null);
+  const lastReplacedRef = useRef('');
 
   const wiki = useMemo(() => (appService ? new WikiStore(appService) : null), [appService]);
   const allNamespaces = useWikiStore((s) => s.allNamespaces);
@@ -32,22 +43,37 @@ const WikiIndex: React.FC = () => {
 
   const [pageCountByNs, setPageCountByNs] = useState<Record<string, number>>({});
   const [blockCountByNs, setBlockCountByNs] = useState<Record<string, number>>({});
+  const [indexBootstrapDone, setIndexBootstrapDone] = useState(false);
+
+  const windowButtonVisible = appService?.hasWindowBar && !isTrafficLightVisible;
 
   useTheme({ systemUIVisible: true, appThemeColor: 'base-200' });
 
   useEffect(() => {
-    if (!wiki) return;
+    if (!wiki) {
+      setIndexBootstrapDone(false);
+      return;
+    }
+    let cancelled = false;
+    setIndexBootstrapDone(false);
     void (async () => {
       await loadAllNamespaces(wiki);
+      if (cancelled) return;
       const pages = await wiki.listAllPages();
       const blocks = await wiki.countBlocksByNamespace();
       const pc: Record<string, number> = {};
       for (const p of pages) {
         pc[p.namespaceId] = (pc[p.namespaceId] ?? 0) + 1;
       }
-      setPageCountByNs(pc);
-      setBlockCountByNs(blocks);
+      if (!cancelled) {
+        setPageCountByNs(pc);
+        setBlockCountByNs(blocks);
+        setIndexBootstrapDone(true);
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [wiki, loadAllNamespaces]);
 
   const nsParam = searchParams?.get('ns') ?? '';
@@ -60,10 +86,20 @@ const WikiIndex: React.FC = () => {
   }, [nsParam, allNamespaces]);
 
   useEffect(() => {
-    if (!wiki || !selectedNsId) return;
+    if (!wiki || !selectedNsId || !indexBootstrapDone) return;
     void loadNamespaceById(wiki, selectedNsId);
     setActiveNamespace(selectedNsId);
-  }, [wiki, selectedNsId, loadNamespaceById, setActiveNamespace]);
+  }, [wiki, selectedNsId, loadNamespaceById, setActiveNamespace, indexBootstrapDone]);
+
+  const replaceWikiUrl = useCallback(
+    (params: URLSearchParams) => {
+      const next = `/wiki?${params.toString()}`;
+      if (lastReplacedRef.current === next) return;
+      lastReplacedRef.current = next;
+      router.replace(next, { scroll: false });
+    },
+    [router],
+  );
 
   /** Canonicalize `ns` (and optional `page`) in the URL when missing or invalid. */
   useEffect(() => {
@@ -73,22 +109,22 @@ const WikiIndex: React.FC = () => {
     if (nsParam && !known) {
       const params = new URLSearchParams();
       params.set('ns', selectedNsId);
-      router.replace(`/wiki?${params.toString()}`, { scroll: false });
+      replaceWikiUrl(params);
       return;
     }
     if (!nsParam) {
       const params = new URLSearchParams();
       params.set('ns', selectedNsId);
       if (pageParam) params.set('page', pageParam);
-      router.replace(`/wiki?${params.toString()}`, { scroll: false });
+      replaceWikiUrl(params);
     }
-  }, [selectedNsId, allNamespaces, nsParam, pageParam, router]);
+  }, [selectedNsId, allNamespaces, nsParam, pageParam, replaceWikiUrl]);
 
   const setUrlNsAndPage = (nsId: string, pageId: string | null) => {
     const params = new URLSearchParams();
     params.set('ns', nsId);
     if (pageId) params.set('page', pageId);
-    router.replace(`/wiki?${params.toString()}`, { scroll: false });
+    replaceWikiUrl(params);
   };
 
   const handleSelectNamespace = (ns: WikiNamespace) => {
@@ -112,23 +148,43 @@ const WikiIndex: React.FC = () => {
       )}
     >
       <header
-        className='border-base-300 flex h-12 flex-shrink-0 items-center justify-between border-b px-4'
+        ref={headerRef}
+        className={clsx(
+          'titlebar border-base-300 flex h-12 flex-shrink-0 items-center justify-between border-b px-4',
+          windowButtonVisible ? 'sm:pr-2' : 'sm:pr-4',
+          isTrafficLightVisible ? 'ps-14' : 'ps-0',
+        )}
         style={{
+          marginTop: appService?.hasSafeAreaInset
+            ? `max(${insets.top}px, ${systemUIVisible ? statusBarHeight : 0}px)`
+            : appService?.hasTrafficLight
+              ? '-2px'
+              : '0px',
           paddingLeft: `${insets.left}px`,
           paddingRight: `${insets.right}px`,
         }}
       >
-        <div className='flex items-center gap-2'>
+        <div className='exclude-title-bar-mousedown flex items-center gap-2'>
           <LuBookOpen className='text-base-content/80 h-5 w-5' aria-hidden />
           <h1 className='text-base font-semibold'>{_('Wiki')}</h1>
         </div>
-        <button
-          type='button'
-          className='btn btn-ghost btn-sm'
-          onClick={() => navigateToLibrary(router, '')}
-        >
-          {_('Library')}
-        </button>
+        <div className='exclude-title-bar-mousedown flex items-center gap-1'>
+          <button
+            type='button'
+            className='btn btn-ghost btn-sm'
+            onClick={() => navigateToLibrary(router, '')}
+          >
+            {_('Library')}
+          </button>
+          {appService?.hasWindowBar && (
+            <WindowButtons
+              headerRef={headerRef}
+              showMinimize={windowButtonVisible}
+              showMaximize={windowButtonVisible}
+              showClose={windowButtonVisible}
+            />
+          )}
+        </div>
       </header>
 
       <div
@@ -149,7 +205,7 @@ const WikiIndex: React.FC = () => {
                 <button
                   type='button'
                   className={clsx(
-                    'hover:bg-base-300 mb-0.5 w-full rounded-md px-2 py-2 text-left text-sm',
+                    'exclude-title-bar-mousedown hover:bg-base-300 mb-0.5 w-full rounded-md px-2 py-2 text-left text-sm',
                     selectedNsId === ns.id && 'bg-base-300',
                   )}
                   onClick={() => handleSelectNamespace(ns)}
@@ -172,7 +228,7 @@ const WikiIndex: React.FC = () => {
         </aside>
 
         <main className='flex min-h-0 min-w-0 flex-1 flex-col'>
-          {wiki && selectedNsId ? (
+          {wiki && selectedNsId && indexBootstrapDone ? (
             <WikiNamespaceView
               namespaceId={selectedNsId}
               activePageId={pageParam || null}

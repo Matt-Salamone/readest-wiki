@@ -233,7 +233,6 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_SYSTEM_SETTINGS.screenWakeLock).toBe('boolean');
       expect(typeof DEFAULT_SYSTEM_SETTINGS.openLastBooks).toBe('boolean');
       expect(typeof DEFAULT_SYSTEM_SETTINGS.autoImportBooksOnOpen).toBe('boolean');
-      expect(typeof DEFAULT_SYSTEM_SETTINGS.telemetryEnabled).toBe('boolean');
       expect(typeof DEFAULT_SYSTEM_SETTINGS.discordRichPresenceEnabled).toBe('boolean');
     });
 
@@ -269,6 +268,7 @@ describe('services/constants', () => {
       expect(typeof DEFAULT_SYSTEM_SETTINGS.lastSyncedAtBooks).toBe('number');
       expect(typeof DEFAULT_SYSTEM_SETTINGS.lastSyncedAtConfigs).toBe('number');
       expect(typeof DEFAULT_SYSTEM_SETTINGS.lastSyncedAtNotes).toBe('number');
+      expect(typeof DEFAULT_SYSTEM_SETTINGS.lastSyncedAtWiki).toBe('number');
     });
 
     it('lastOpenBooks is an empty array', () => {

@@ -6,8 +6,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { WikiStore } from '@/services/wiki';
-import type { WikiPage } from '@/types/wiki';
+import type { WikiNamespace, WikiPage } from '@/types/wiki';
+import { buildWikiSpoilerContext, isPageVisible } from '@/app/reader/utils/wikiSpoiler';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
@@ -27,28 +29,48 @@ const WikiQuickLookupModal: React.FC = () => {
   const bookKeys = useReaderStore((s) => s.bookKeys);
   const sideBarBookKey = useSidebarStore((s) => s.sideBarBookKey);
   const getBookData = useBookDataStore((s) => s.getBookData);
+  const library = useLibraryStore((s) => s.library);
   const setNotebookVisible = useNotebookStore((s) => s.setNotebookVisible);
 
   const effectiveBookKey = sideBarBookKey ?? bookKeys[0] ?? null;
   const book = effectiveBookKey ? getBookData(effectiveBookKey)?.book : undefined;
+  const progressLocation = useReaderStore((s) =>
+    effectiveBookKey ? (s.viewStates[effectiveBookKey]?.progress?.location ?? null) : null,
+  );
 
   const [query, setQuery] = useState('');
   const [pages, setPages] = useState<WikiPage[]>([]);
+  const [wikiNamespace, setWikiNamespace] = useState<WikiNamespace | null>(null);
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isOpen || !wiki || !book) return;
+    if (!isOpen || !wiki || !book) {
+      setWikiNamespace(null);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       const ns = await wiki.resolveNamespaceForBook(book);
       const list = await wiki.listPages(ns.id);
-      if (!cancelled) setPages(list);
+      if (!cancelled) {
+        setPages(list);
+        setWikiNamespace(ns);
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [isOpen, wiki, book]);
+
+  const spoilerCtx = useMemo(() => {
+    if (!wikiNamespace || !book || !effectiveBookKey) return null;
+    return buildWikiSpoilerContext(wikiNamespace, library, {
+      activeBookKey: effectiveBookKey,
+      activeBook: book,
+      activeLocation: progressLocation,
+    });
+  }, [wikiNamespace, library, effectiveBookKey, book, progressLocation]);
 
   useEffect(() => {
     if (isOpen) {
@@ -58,7 +80,11 @@ const WikiQuickLookupModal: React.FC = () => {
     }
   }, [isOpen]);
 
-  const items = useMemo(() => suggestWikiPagesForQuickLookup(query, pages, 8), [query, pages]);
+  const items = useMemo(() => {
+    const ranked = suggestWikiPagesForQuickLookup(query, pages, 8);
+    if (!spoilerCtx) return ranked;
+    return ranked.filter((p) => isPageVisible(p, spoilerCtx));
+  }, [query, pages, spoilerCtx]);
 
   useEffect(() => {
     setHighlight((h) => (items.length ? Math.min(h, items.length - 1) : 0));

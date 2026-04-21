@@ -258,7 +258,7 @@ describe('WikiStore', () => {
     });
     await store.upsertWikiLinks(source.id, null, '[[A]]', ns.id);
     let links = await sharedDb.select<{ target_page_id: string }>(
-      `SELECT target_page_id FROM wiki_links WHERE source_page_id = ? AND source_block_id = ''`,
+      `SELECT target_page_id FROM wiki_links WHERE source_page_id = ? AND source_block_id = '' AND deleted_at IS NULL`,
       [source.id],
     );
     expect(links).toHaveLength(1);
@@ -267,7 +267,7 @@ describe('WikiStore', () => {
     const updated = await store.getPage(source.id);
     await store.upsertWikiLinks(source.id, null, updated!.summaryMarkdown, ns.id);
     links = await sharedDb.select<{ target_page_id: string }>(
-      `SELECT target_page_id FROM wiki_links WHERE source_page_id = ? AND source_block_id = ''`,
+      `SELECT target_page_id FROM wiki_links WHERE source_page_id = ? AND source_block_id = '' AND deleted_at IS NULL`,
       [source.id],
     );
     expect(links).toHaveLength(1);
@@ -465,5 +465,45 @@ describe('WikiStore', () => {
 
     const byNs = await store.countBlocksByNamespace();
     expect(byNs[ns.id]).toBe(3);
+  });
+
+  test('exportNamespace + importNamespace creates imported namespace with remapped ids', async () => {
+    const book: Book = {
+      hash: 'h1',
+      format: 'EPUB',
+      title: 'T',
+      author: 'A',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const ns = await store.resolveNamespaceForBook(book);
+    expect(ns.spoilerOverride).toBe(null);
+    const p = await store.createPage({
+      namespaceId: ns.id,
+      title: 'Hero',
+      pageType: 'Person',
+      summaryMarkdown: '[[Villain]]',
+    });
+    await store.upsertWikiLinks(p.id, null, p.summaryMarkdown, ns.id);
+    await store.createBlock({
+      pageId: p.id,
+      bookHash: 'h1',
+      cfi: 'epubcfi(/6/2)',
+      quoteText: 'Line',
+      noteMarkdown: 'Seen',
+    });
+
+    const exported = await store.exportNamespace(ns.id);
+    expect(exported.format).toBe('readest.wiki');
+    expect(exported.version).toBe(1);
+    expect(exported.pages.some((x) => x.title === 'Hero')).toBe(true);
+
+    const imported = await store.importNamespace(exported, {});
+    expect(imported.id.startsWith('imported:')).toBe(true);
+    expect(imported.importedMode).toBe(1);
+
+    const importedPages = await store.listPages(imported.id);
+    const hero = importedPages.find((x) => x.title === 'Hero' || x.title.startsWith('Hero'));
+    expect(hero).toBeDefined();
   });
 });

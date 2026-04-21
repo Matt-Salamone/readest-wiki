@@ -1,10 +1,12 @@
 import clsx from 'clsx';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { RiLock2Line } from 'react-icons/ri';
 
 import TextEditor from '@/components/TextEditor';
 import type { TextEditorRef } from '@/components/TextEditor';
 import { WikiStore } from '@/services/wiki';
-import type { WikiBlock, WikiPage, WikiTag } from '@/types/wiki';
+import type { SpoilerContext, WikiBlock, WikiPage, WikiTag } from '@/types/wiki';
+import { isBlockVisible } from '@/app/reader/utils/wikiSpoiler';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
@@ -33,6 +35,9 @@ interface WikiBlockListProps {
   wiki: WikiStore;
   onReload: () => Promise<void>;
   onNavigateToPage: (pageId: string) => void;
+  onCreateGhostForTitle?: (rawTitle: string) => void | Promise<void>;
+  /** When set, blocks ahead of reading progress are masked. */
+  spoilerCtx?: SpoilerContext | null;
 }
 
 const WikiBlockList: React.FC<WikiBlockListProps> = ({
@@ -46,6 +51,8 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
   wiki,
   onReload,
   onNavigateToPage,
+  onCreateGhostForTitle,
+  spoilerCtx,
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
@@ -132,15 +139,41 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
 
     const bookTitle = getBookByHash(block.bookHash)?.title ?? block.bookHash.slice(0, 8);
 
+    const visible = !spoilerCtx || isBlockVisible(block, spoilerCtx);
+
+    if (!visible) {
+      return (
+        <div
+          key={block.id}
+          className='border-base-300 bg-base-100/80 relative mb-3 overflow-hidden rounded-lg border p-2'
+        >
+          <div className='pointer-events-none select-none blur-sm'>
+            <div className='bg-base-300 mb-2 h-4 w-24 rounded' />
+            <div className='bg-base-200 mb-2 h-16 rounded' />
+            <div className='bg-base-200 h-8 rounded' />
+          </div>
+          <div className='bg-base-100/90 absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center'>
+            <RiLock2Line className='text-base-content/50 h-6 w-6' aria-hidden />
+            <span className='text-base-content/70 text-xs font-medium'>
+              {_('Keep reading to unlock')}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div key={block.id} className='border-base-300 bg-base-100 mb-3 rounded-lg border p-2'>
-        <div className='mb-2 flex flex-wrap items-center gap-2 text-xs'>
-          <span className='badge badge-outline badge-sm max-w-[10rem] truncate' title={bookTitle}>
-            {bookTitle}
+        <div className='mb-2 flex w-full flex-wrap items-center gap-2 text-xs'>
+          <span
+            className='badge badge-outline badge-sm max-w-[10rem] overflow-hidden'
+            title={bookTitle}
+          >
+            <span className='block w-full truncate text-start'>{bookTitle}</span>
           </span>
           <button
             type='button'
-            className='btn btn-ghost btn-xs'
+            className='btn btn-ghost btn-xs ml-auto shrink-0'
             disabled={!block.cfi?.trim()}
             onClick={() => handleJump(block.cfi, block.bookHash)}
           >
@@ -165,7 +198,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
           </div>
         ) : null}
 
-        <div className='mb-1 flex items-center gap-2'>
+        <div className='mb-1 flex flex-wrap items-center gap-x-2 gap-y-1'>
           <span className='text-xs font-medium'>{_('Note')}</span>
           <div className='join'>
             <button
@@ -196,7 +229,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
           </div>
           <button
             type='button'
-            className='btn btn-ghost btn-xs text-error'
+            className='btn btn-ghost btn-xs text-error ms-auto'
             onClick={async () => {
               if (!(await confirmWikiDeletion(appService, _('Delete this wiki block?')))) return;
               await wiki.softDeleteBlock(block.id);
@@ -212,6 +245,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
             markdown={block.noteMarkdown ?? ''}
             pagesBySlug={pagesBySlug}
             onWikiPageNavigate={onNavigateToPage}
+            onCreateGhostForTitle={onCreateGhostForTitle}
             className='text-sm'
           />
         ) : (

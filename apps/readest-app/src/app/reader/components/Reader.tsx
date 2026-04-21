@@ -27,7 +27,6 @@ import { KeyboardShortcutsHelp } from '@/components/KeyboardShortcutsHelp';
 import { UpdaterWindow } from '@/components/UpdaterWindow';
 import { KOSyncSettingsWindow } from './KOSyncSettings';
 import { ReadwiseSettingsWindow } from './ReadwiseSettings';
-import { HardcoverSettingsWindow } from './HardcoverSettings';
 import { ProofreadRulesManager } from './ProofreadRules';
 import { Toast } from '@/components/Toast';
 import { getLocale } from '@/utils/misc';
@@ -184,7 +183,6 @@ const Reader: React.FC<{ ids?: string }> = ({ ids }) => {
         <UpdaterWindow />
         <KOSyncSettingsWindow />
         <ReadwiseSettingsWindow />
-        <HardcoverSettingsWindow />
         <ProofreadRulesManager />
         <Toast />
       </Suspense>

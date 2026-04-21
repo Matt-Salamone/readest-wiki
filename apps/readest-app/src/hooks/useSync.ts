@@ -2,16 +2,32 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEnv } from '@/context/EnvContext';
 import { useSyncContext } from '@/context/SyncContext';
-import { SyncData, SyncOp, SyncResult, SyncType } from '@/libs/sync';
+import {
+  SyncData,
+  SyncOp,
+  SyncResult,
+  SyncType,
+  WikiSyncPayload,
+  WikiSyncResult,
+} from '@/libs/sync';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { transformBookConfigFromDB } from '@/utils/transform';
 import { transformBookNoteFromDB } from '@/utils/transform';
 import { transformBookFromDB } from '@/utils/transform';
+import {
+  transformWikiBlockFromDB,
+  transformWikiLinkFromDB,
+  transformWikiNamespaceFromDB,
+  transformWikiPageFromDB,
+  transformWikiSectionCatalogFromDB,
+  transformWikiTagFromDB,
+} from '@/utils/transform';
 import { DBBook, DBBookConfig, DBBookNote } from '@/types/records';
 import { Book, BookConfig, BookDataRecord, BookNote } from '@/types/book';
 import { navigateToLogin } from '@/utils/nav';
 import { useReaderStore } from '@/store/readerStore';
+import type { WikiSyncLocalPayload } from '@/types/wiki';
 
 const transformsFromDB = {
   books: transformBookFromDB,
@@ -34,6 +50,42 @@ const computeMaxTimestamp = (records: BookDataRecord[]): number => {
   return maxTime;
 };
 
+const computeMaxWikiTimestamp = (wiki: WikiSyncResult): number => {
+  let maxTime = 0;
+  const arrays = [
+    wiki.namespaces,
+    wiki.pages,
+    wiki.blocks,
+    wiki.tags,
+    wiki.links,
+    wiki.section_catalog,
+  ];
+  for (const arr of arrays) {
+    for (const rec of arr) {
+      if (rec.updated_at) {
+        maxTime = Math.max(maxTime, new Date(rec.updated_at).getTime());
+      }
+      if (rec.deleted_at) {
+        maxTime = Math.max(maxTime, new Date(rec.deleted_at).getTime());
+      }
+    }
+  }
+  return maxTime;
+};
+
+const wikiPayloadNonEmpty = (w: WikiSyncPayload | undefined): boolean => {
+  if (!w) return false;
+  return (
+    (w.namespaces?.length ?? 0) +
+      (w.pages?.length ?? 0) +
+      (w.blocks?.length ?? 0) +
+      (w.tags?.length ?? 0) +
+      (w.links?.length ?? 0) +
+      (w.section_catalog?.length ?? 0) >
+    0
+  );
+};
+
 const ONE_DAY_IN_MS = 24 * 60 * 60 * 1000;
 export function useSync(bookKey?: string) {
   const router = useRouter();
@@ -46,22 +98,25 @@ export function useSync(bookKey?: string) {
   const [syncingBooks, setSyncingBooks] = useState(false);
   const [syncingConfigs, setSyncingConfigs] = useState(false);
   const [syncingNotes, setSyncingNotes] = useState(false);
+  const [syncingWiki, setSyncingWiki] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncedAtBooks, setLastSyncedAtBooks] = useState<number>(0);
   const [lastSyncedAtConfigs, setLastSyncedAtConfigs] = useState<number>(0);
   const [lastSyncedAtNotes, setLastSyncedAtNotes] = useState<number>(0);
+  const [lastSyncedAtWiki, setLastSyncedAtWiki] = useState<number>(0);
   const [lastSyncedAtInited, setLastSyncedAtInited] = useState(false);
 
   const [syncing, setSyncing] = useState(false);
-  // null means unsynced, empty array means synced no changes
   const [syncResult, setSyncResult] = useState<SyncResult>({
     books: null,
     configs: null,
     notes: null,
+    wiki: null,
   });
   const [syncedBooks, setSyncedBooks] = useState<Book[] | null>(null);
   const [syncedConfigs, setSyncedConfigs] = useState<BookConfig[] | null>(null);
   const [syncedNotes, setSyncedNotes] = useState<BookNote[] | null>(null);
+  const [syncedWikiPayload, setSyncedWikiPayload] = useState<WikiSyncLocalPayload | null>(null);
 
   const { syncClient } = useSyncContext();
 
@@ -79,6 +134,7 @@ export function useSync(bookKey?: string) {
     const lastSyncedBooksAt = settings.lastSyncedAtBooks ?? 0;
     const lastSyncedConfigsAt = config?.lastSyncedAtConfig ?? settings.lastSyncedAtConfigs ?? 0;
     const lastSyncedNotesAt = config?.lastSyncedAtNotes ?? settings.lastSyncedAtNotes ?? 0;
+    const lastSyncedWikiAt = settings.lastSyncedAtWiki ?? 0;
     const now = Date.now();
     setLastSyncedAtBooks(
       now - lastSyncedBooksAt > 3 * ONE_DAY_IN_MS ? 0 : lastSyncedBooksAt - ONE_DAY_IN_MS,
@@ -89,12 +145,13 @@ export function useSync(bookKey?: string) {
     setLastSyncedAtNotes(
       now - lastSyncedNotesAt > 3 * ONE_DAY_IN_MS ? 0 : lastSyncedNotesAt - ONE_DAY_IN_MS,
     );
+    setLastSyncedAtWiki(
+      now - lastSyncedWikiAt > 3 * ONE_DAY_IN_MS ? 0 : lastSyncedWikiAt - ONE_DAY_IN_MS,
+    );
     setLastSyncedAtInited(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookKey, settings, config]);
 
-  // bookId is for configs and notes only, if bookId is provided, only pull changes for that book
-  // and update the lastSyncedAt for that book in the book config
   const pullChanges = async (
     type: SyncType,
     since: number,
@@ -108,33 +165,51 @@ export function useSync(bookKey?: string) {
 
     try {
       const result = await syncClient.pullChanges(since, type, bookId, metaHash);
-      setSyncResult({ ...syncResult, [type]: result[type] });
-      const records = result[type];
+
+      if (type === 'wiki') {
+        setSyncResult((prev) => ({ ...prev, wiki: result.wiki ?? null }));
+        const w = result.wiki;
+        const total = w
+          ? w.namespaces.length +
+            w.pages.length +
+            w.blocks.length +
+            w.tags.length +
+            w.links.length +
+            w.section_catalog.length
+          : 0;
+        if (since > 1000 && total === 0) return 0;
+        const maxTime = total > 0 && w ? computeMaxWikiTimestamp(w) : Date.now();
+        setLastSyncedAt(maxTime);
+        const st = useSettingsStore.getState().settings;
+        st.lastSyncedAtWiki = maxTime;
+        setSettings(st);
+        return total;
+      }
+
+      setSyncResult((prev) => ({ ...prev, [type]: result[type as Exclude<SyncType, 'wiki'>] }));
+      const records = result[type as Exclude<SyncType, 'wiki'>] as BookDataRecord[] | null;
       if (since > 1000 && !records?.length) return 0;
-      // For since <= 1000, we set lastSyncedAt to now if no records returned
       const maxTime = records?.length ? computeMaxTimestamp(records) : Date.now();
       setLastSyncedAt(maxTime);
 
-      // due to closures in React hooks the settings might be stale
-      // we need to fetch the latest settings from store
-      const settings = useSettingsStore.getState().settings;
+      const st = useSettingsStore.getState().settings;
       switch (type) {
         case 'books':
-          settings.lastSyncedAtBooks = maxTime;
-          setSettings(settings);
+          st.lastSyncedAtBooks = maxTime;
+          setSettings(st);
           break;
         case 'configs':
           if (!bookId) {
-            settings.lastSyncedAtConfigs = maxTime;
-            setSettings(settings);
+            st.lastSyncedAtConfigs = maxTime;
+            setSettings(st);
           } else if (bookKey) {
             setConfig(bookKey, { lastSyncedAtConfig: maxTime });
           }
           break;
         case 'notes':
           if (!bookId) {
-            settings.lastSyncedAtNotes = maxTime;
-            setSettings(settings);
+            st.lastSyncedAtNotes = maxTime;
+            setSettings(st);
           } else if (bookKey) {
             setConfig(bookKey, { lastSyncedAtNotes: maxTime });
           }
@@ -145,8 +220,9 @@ export function useSync(bookKey?: string) {
       console.error(err);
       if (err instanceof Error) {
         if (err.message.includes('Not authenticated') && settings.keepLogin) {
-          settings.keepLogin = false;
-          setSettings(settings);
+          const st = useSettingsStore.getState().settings;
+          st.keepLogin = false;
+          setSettings(st);
           navigateToLogin(router);
         }
         setSyncError(err.message || `Error pulling ${type}`);
@@ -156,7 +232,7 @@ export function useSync(bookKey?: string) {
       return 0;
     } finally {
       setSyncing(false);
-      saveSettings(envConfig, settings);
+      await saveSettings(envConfig, useSettingsStore.getState().settings);
     }
   };
 
@@ -249,9 +325,36 @@ export function useSync(bookKey?: string) {
     [lastSyncedAtInited, lastSyncedAtNotes],
   );
 
+  const syncWiki = useCallback(
+    async (wikiPayload?: WikiSyncPayload, op: SyncOp = 'both', since?: number) => {
+      if (!lastSyncedAtInited && (op === 'pull' || op === 'both')) return;
+      if ((op === 'push' || op === 'both') && wikiPayloadNonEmpty(wikiPayload)) {
+        const pushed = await pushChanges({ wiki: wikiPayload });
+        if (pushed && bookKey) {
+          setConfig(bookKey, { lastPushedAtWiki: Date.now() });
+        }
+      }
+      if (op === 'pull' || op === 'both') {
+        await pullChanges(
+          'wiki',
+          since ?? lastSyncedAtWiki + 1,
+          setLastSyncedAtWiki,
+          setSyncingWiki,
+        );
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lastSyncedAtInited, lastSyncedAtWiki, bookKey],
+  );
+
   useEffect(() => {
     if (!syncing && syncResult) {
-      const { books: dbBooks, configs: dbBookConfigs, notes: dbBookNotes } = syncResult;
+      const {
+        books: dbBooks,
+        configs: dbBookConfigs,
+        notes: dbBookNotes,
+        wiki: dbWiki,
+      } = syncResult;
       const books = dbBooks?.map((dbBook) =>
         transformsFromDB['books'](dbBook as unknown as DBBook),
       );
@@ -264,24 +367,45 @@ export function useSync(bookKey?: string) {
       if (books) setSyncedBooks(books);
       if (configs) setSyncedConfigs(configs);
       if (notes) setSyncedNotes(notes);
+      if (dbWiki) {
+        const payload: WikiSyncLocalPayload = {
+          namespaces: dbWiki.namespaces.map(transformWikiNamespaceFromDB),
+          pages: dbWiki.pages.map(transformWikiPageFromDB),
+          blocks: dbWiki.blocks.map(transformWikiBlockFromDB),
+          tags: dbWiki.tags.map(transformWikiTagFromDB),
+          links: dbWiki.links.map(transformWikiLinkFromDB),
+          sectionCatalog: dbWiki.section_catalog.map(transformWikiSectionCatalogFromDB),
+        };
+        const total =
+          payload.namespaces.length +
+          payload.pages.length +
+          payload.blocks.length +
+          payload.tags.length +
+          payload.links.length +
+          payload.sectionCatalog.length;
+        setSyncedWikiPayload(total > 0 ? payload : null);
+      }
     }
   }, [syncResult, syncing]);
 
   return {
-    syncing: syncingBooks || syncingConfigs || syncingNotes,
+    syncing: syncingBooks || syncingConfigs || syncingNotes || syncingWiki,
     syncError,
     syncResult,
     syncedBooks,
     syncedConfigs,
     syncedNotes,
+    syncedWikiPayload,
     lastSyncedAtBooks,
     lastSyncedAtNotes,
     lastSyncedAtConfigs,
+    lastSyncedAtWiki,
     useSyncInited: lastSyncedAtInited,
     pullChanges,
     pushChanges,
     syncBooks,
     syncConfigs,
     syncNotes,
+    syncWiki,
   };
 }

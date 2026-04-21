@@ -35,7 +35,7 @@ vi.mock('@/store/settingsStore', () => {
 });
 
 import type { AISettings } from '@/services/ai/types';
-import { DEFAULT_AI_SETTINGS, GATEWAY_MODELS } from '@/services/ai/constants';
+import { DEFAULT_AI_SETTINGS } from '@/services/ai/constants';
 
 describe('DEFAULT_AI_SETTINGS', () => {
   test('should have enabled set to false by default', () => {
@@ -57,17 +57,6 @@ describe('DEFAULT_AI_SETTINGS', () => {
   });
 });
 
-describe('Model constants', () => {
-  test('GATEWAY_MODELS should have expected models', () => {
-    expect(GATEWAY_MODELS.GEMINI_FLASH_LITE).toBeDefined();
-    expect(GATEWAY_MODELS.GPT_5_NANO).toBeDefined();
-    expect(GATEWAY_MODELS.LLAMA_4_SCOUT).toBeDefined();
-    expect(GATEWAY_MODELS.GROK_4_1_FAST).toBeDefined();
-    expect(GATEWAY_MODELS.DEEPSEEK_V3_2).toBeDefined();
-    expect(GATEWAY_MODELS.QWEN_3_235B).toBeDefined();
-  });
-});
-
 describe('AISettings Type', () => {
   test('should allow creating valid settings object', () => {
     const settings: AISettings = {
@@ -84,19 +73,5 @@ describe('AISettings Type', () => {
     expect(settings.enabled).toBe(true);
     expect(settings.provider).toBe('ollama');
     expect(settings.indexingMode).toBe('background');
-  });
-
-  test('should support ai-gateway provider', () => {
-    const settings: AISettings = {
-      ...DEFAULT_AI_SETTINGS,
-      enabled: true,
-      provider: 'ai-gateway',
-      aiGatewayApiKey: 'test-key',
-      aiGatewayModel: 'openai/gpt-5.2',
-      aiGatewayEmbeddingModel: 'openai/text-embedding-3-small',
-    };
-
-    expect(settings.provider).toBe('ai-gateway');
-    expect(settings.aiGatewayApiKey).toBe('test-key');
   });
 });

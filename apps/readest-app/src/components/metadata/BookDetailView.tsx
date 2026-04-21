@@ -9,6 +9,7 @@ import {
   MdExpandMore,
   MdExpandLess,
 } from 'react-icons/md';
+import { LuBookOpen } from 'react-icons/lu';
 
 import { Book } from '@/types/book';
 import { BookMetadata } from '@/libs/document';
@@ -32,6 +33,7 @@ interface BookDetailViewProps {
   book: Book;
   metadata: BookMetadata | null;
   fileSize: number | null;
+  onAddWikiNote?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
   onDeleteCloudBackup?: () => void;
@@ -45,6 +47,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
   book,
   metadata,
   fileSize,
+  onAddWikiNote,
   onEdit,
   onDelete,
   onDeleteCloudBackup,
@@ -89,6 +92,16 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({
             </p>
           </div>
           <div className='flex flex-nowrap items-center gap-3 sm:gap-x-4'>
+            {onAddWikiNote && (
+              <button
+                type='button'
+                onClick={onAddWikiNote}
+                className='btn btn-ghost h-8 min-h-8 w-8 p-0'
+                title={_('Add wiki note')}
+              >
+                <LuBookOpen className='text-base-content h-5 w-5' aria-hidden />
+              </button>
+            )}
             {onEdit && (
               <button
                 onClick={onEdit}

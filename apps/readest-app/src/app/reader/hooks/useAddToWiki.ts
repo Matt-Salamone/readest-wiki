@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { useEnv } from '@/context/EnvContext';
-import { BookNote, FIXED_LAYOUT_FORMATS } from '@/types/book';
-import type { WikiBlock, WikiPage, WikiPageType } from '@/types/wiki';
+import type { Book, BookNote } from '@/types/book';
+import { FIXED_LAYOUT_FORMATS } from '@/types/book';
+import type { WikiBlock, WikiNamespace, WikiPage, WikiPageType } from '@/types/wiki';
 import { WikiStore } from '@/services/wiki';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -24,13 +25,78 @@ export interface AddToWikiInput {
   tagName: string | null;
 }
 
+/**
+ * Add a wiki block from the library (no reader CFI / quote / in-text highlight mirroring).
+ * Refreshes the namespace cache via {@link loadNamespaceById}.
+ */
+export async function addToWikiForBook(params: {
+  wiki: WikiStore;
+  book: Book;
+  loadNamespaceById: (store: WikiStore, namespaceId: string) => Promise<WikiNamespace | null>;
+  targetPage: AddToWikiTarget;
+  noteMarkdown: string | null;
+  tagName: string | null;
+}): Promise<{ page: WikiPage; block: WikiBlock | null }> {
+  const { wiki, book, loadNamespaceById, targetPage, noteMarkdown, tagName } = params;
+  const namespace = await wiki.resolveNamespaceForBook(book);
+  const namespaceId = namespace.id;
+
+  let page: WikiPage;
+  if (targetPage.kind === 'existing') {
+    const existing = await wiki.getPage(targetPage.pageId);
+    if (!existing) {
+      throw new Error('Wiki page not found');
+    }
+    page = existing;
+  } else {
+    page = await wiki.createPage({
+      namespaceId,
+      title: targetPage.title,
+      pageType: targetPage.pageType ?? null,
+      firstSeenCfi: null,
+      firstSeenBookHash: book.hash,
+    });
+  }
+
+  const tagIds: string[] = [];
+  const rawSection = tagName?.trim();
+  if (rawSection) {
+    const canonical = await wiki.ensureSectionInCatalog(rawSection);
+    if (canonical) {
+      const tag = await wiki.createTag({ namespaceId, tagName: canonical });
+      tagIds.push(tag.id);
+    }
+  }
+
+  const noteMd = noteMarkdown?.trim() ? noteMarkdown.trim() : null;
+  const shouldCreateBlock = Boolean(noteMd) || tagIds.length > 0;
+
+  let createdBlock: WikiBlock | null = null;
+  if (shouldCreateBlock) {
+    createdBlock = await wiki.createBlock({
+      pageId: page.id,
+      bookHash: book.hash,
+      cfi: '',
+      xpointer0: null,
+      xpointer1: null,
+      quoteText: null,
+      noteMarkdown: noteMd,
+      tagIds,
+    });
+    await wiki.upsertWikiLinks(page.id, createdBlock.id, noteMd ?? '', namespaceId);
+  }
+
+  await wiki.upsertWikiLinks(page.id, null, page.summaryMarkdown, namespaceId);
+  await loadNamespaceById(wiki, namespaceId);
+  return { page: (await wiki.getPage(page.id)) ?? page, block: createdBlock };
+}
+
 export function useAddToWiki(bookKey: string) {
   const { envConfig, appService } = useEnv();
   const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
   const { getView, getViewsById, getProgress } = useReaderStore();
   const { settings } = useSettingsStore();
   const loadNamespace = useWikiStore((s) => s.loadNamespace);
-  const invalidateNamespace = useWikiStore((s) => s.invalidateNamespace);
 
   const wikiService = useMemo(() => (appService ? new WikiStore(appService) : null), [appService]);
 
@@ -120,7 +186,6 @@ export function useAddToWiki(bookKey: string) {
 
       await wikiService.upsertWikiLinks(page.id, null, page.summaryMarkdown, namespaceId);
 
-      invalidateNamespace(namespaceId);
       await loadNamespace(wikiService, book);
 
       if (cfiStr && quote) {
@@ -142,6 +207,8 @@ export function useAddToWiki(bookKey: string) {
             page: progress?.page,
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            wikiPageId: page.id,
+            wikiBlockId: createdBlock?.id ?? null,
           };
 
           const existingIndex = annotations.findIndex(
@@ -175,7 +242,6 @@ export function useAddToWiki(bookKey: string) {
       saveConfig,
       updateBooknotes,
       loadNamespace,
-      invalidateNamespace,
     ],
   );
 

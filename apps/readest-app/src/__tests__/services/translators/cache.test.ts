@@ -98,8 +98,8 @@ describe('translation cache', () => {
     });
 
     test('preserves special characters in text', () => {
-      const key = getCacheKey('foo:bar:baz', 'en', 'de', 'deepl');
-      expect(key).toBe('deepl:en:de:foo:bar:baz');
+      const key = getCacheKey('foo:bar:baz', 'en', 'de', 'google');
+      expect(key).toBe('google:en:de:foo:bar:baz');
     });
 
     test('handles empty strings', () => {
@@ -148,13 +148,13 @@ describe('translation cache', () => {
 
     test('different providers produce different cache entries', async () => {
       await storeInCache('hello', 'bonjour-google', 'en', 'fr', 'google');
-      await storeInCache('hello', 'bonjour-deepl', 'en', 'fr', 'deepl');
+      await storeInCache('hello', 'bonjour-azure', 'en', 'fr', 'azure');
 
       const fromGoogle = await getFromCache('hello', 'en', 'fr', 'google');
-      const fromDeepl = await getFromCache('hello', 'en', 'fr', 'deepl');
+      const fromAzure = await getFromCache('hello', 'en', 'fr', 'azure');
 
       expect(fromGoogle).toBe('bonjour-google');
-      expect(fromDeepl).toBe('bonjour-deepl');
+      expect(fromAzure).toBe('bonjour-azure');
     });
 
     test('different language pairs produce different cache entries', async () => {
@@ -184,7 +184,7 @@ describe('translation cache', () => {
     test('no filter clears all entries', async () => {
       await seedCache([
         { text: 'a', translation: '1', sourceLang: 'en', targetLang: 'fr', provider: 'google' },
-        { text: 'b', translation: '2', sourceLang: 'en', targetLang: 'de', provider: 'deepl' },
+        { text: 'b', translation: '2', sourceLang: 'en', targetLang: 'de', provider: 'google' },
       ]);
 
       const deleted = await clearCache();
@@ -197,20 +197,16 @@ describe('translation cache', () => {
     test('provider filter clears only matching provider', async () => {
       await seedCache([
         { text: 'a', translation: '1', sourceLang: 'en', targetLang: 'fr', provider: 'google' },
-        { text: 'b', translation: '2', sourceLang: 'en', targetLang: 'fr', provider: 'deepl' },
-        { text: 'c', translation: '3', sourceLang: 'en', targetLang: 'de', provider: 'google' },
+        { text: 'b', translation: '2', sourceLang: 'en', targetLang: 'fr', provider: 'google' },
+        { text: 'c', translation: '3', sourceLang: 'en', targetLang: 'de', provider: 'azure' },
       ]);
 
       const deleted = await clearCache({ provider: 'google' });
       expect(deleted).toBe(2);
 
-      // The deepl entry should remain
-      const result = await getFromCache('b', 'en', 'fr', 'deepl');
-      expect(result).toBe('2');
-
-      // Google entries should be gone
-      const resultA = await getFromCache('a', 'en', 'fr', 'google');
-      expect(resultA).toBeNull();
+      expect(await getFromCache('a', 'en', 'fr', 'google')).toBeNull();
+      expect(await getFromCache('b', 'en', 'fr', 'google')).toBeNull();
+      expect(await getFromCache('c', 'en', 'de', 'azure')).toBe('3');
     });
 
     test('maxAge filter clears only old entries', async () => {
@@ -252,11 +248,11 @@ describe('translation cache', () => {
       const realNow = Date.now();
       const pastTime = realNow - 200_000;
 
-      // Old google entry
+      // Old entries at pastTime: one google, one azure
       const origDateNow = Date.now;
       Date.now = () => pastTime;
       await storeInCache('old-g', 'x', 'en', 'fr', 'google');
-      await storeInCache('old-d', 'y', 'en', 'fr', 'deepl');
+      await storeInCache('old-d', 'y', 'en', 'fr', 'azure');
       Date.now = origDateNow;
 
       // New google entry
@@ -274,7 +270,7 @@ describe('translation cache', () => {
       expect(resultNewG).toBe('z');
 
       // old-d should remain (different provider)
-      const resultOldD = await getFromCache('old-d', 'en', 'fr', 'deepl');
+      const resultOldD = await getFromCache('old-d', 'en', 'fr', 'azure');
       expect(resultOldD).toBe('y');
     });
   });
@@ -292,7 +288,7 @@ describe('translation cache', () => {
     test('returns correct entry count', async () => {
       await seedCache([
         { text: 'a', translation: '1', sourceLang: 'en', targetLang: 'fr', provider: 'google' },
-        { text: 'b', translation: '2', sourceLang: 'en', targetLang: 'de', provider: 'deepl' },
+        { text: 'b', translation: '2', sourceLang: 'en', targetLang: 'de', provider: 'google' },
       ]);
 
       const stats = await getCacheStats(false);

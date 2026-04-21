@@ -17,7 +17,6 @@ import {
   ViewSettingsConfig,
 } from '@/types/book';
 import {
-  HardcoverSettings,
   KOSyncSettings,
   LibraryGroupByType,
   LibrarySortByType,
@@ -75,12 +74,6 @@ export const DEFAULT_READWISE_SETTINGS = {
   lastSyncedAt: 0,
 } as ReadwiseSettings;
 
-export const DEFAULT_HARDCOVER_SETTINGS = {
-  enabled: false,
-  accessToken: '',
-  lastSyncedAt: 0,
-} as HardcoverSettings;
-
 export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   keepLogin: false,
   autoUpload: true,
@@ -95,7 +88,6 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
   openLastBooks: false,
   lastOpenBooks: [],
   autoImportBooksOnOpen: false,
-  telemetryEnabled: true,
   discordRichPresenceEnabled: false,
   libraryViewMode: 'grid',
   librarySortBy: LibrarySortByType.Updated,
@@ -111,12 +103,12 @@ export const DEFAULT_SYSTEM_SETTINGS: Partial<SystemSettings> = {
 
   kosync: DEFAULT_KOSYNC_SETTINGS,
   readwise: DEFAULT_READWISE_SETTINGS,
-  hardcover: DEFAULT_HARDCOVER_SETTINGS,
   aiSettings: DEFAULT_AI_SETTINGS,
 
   lastSyncedAtBooks: 0,
   lastSyncedAtConfigs: 0,
   lastSyncedAtNotes: 0,
+  lastSyncedAtWiki: 0,
 };
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: Partial<SystemSettings> = {
@@ -148,7 +140,7 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
   isWikiPanelPinned: false,
   notebookActiveTab: 'notes',
   autohideCursor: true,
-  translationProvider: 'deepl',
+  translationProvider: 'google',
   translateTargetLang: 'EN',
 
   customThemes: [],
@@ -322,7 +314,7 @@ export const DEFAULT_TTS_CONFIG: TTSConfig = {
 
 export const DEFAULT_TRANSLATOR_CONFIG: TranslatorConfig = {
   translationEnabled: false,
-  translationProvider: 'deepl',
+  translationProvider: 'google',
   translateTargetLang: '',
   showTranslateSource: true,
   ttsReadAloudText: 'both',

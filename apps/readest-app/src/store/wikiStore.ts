@@ -3,8 +3,32 @@ import type { Book } from '@/types/book';
 import type { WikiNamespace, WikiPage, WikiBlock, WikiTag } from '@/types/wiki';
 import type { WikiStore } from '@/services/wiki';
 
-/** SQLite (Turso/libsql) only allows one in-flight connection per wiki DB — queue loads to avoid "concurrent use forbidden". */
-let wikiNamespaceLoadChain: Promise<unknown> = Promise.resolve();
+/** SQLite (Turso/libsql) only allows one in-flight connection per wiki DB — serialize all wiki DB work. */
+let wikiDbChain: Promise<unknown> = Promise.resolve();
+
+/**
+ * Depth of nested wiki DB work. `loadNamespace` / `loadNamespaceById` run inside this queue while
+ * calling `WikiStore` methods that also use `runOnWikiDb` (via `withDb`). Without re-entrancy those
+ * inner calls would deadlock waiting on the outer task.
+ */
+let wikiDbRunDepth = 0;
+
+/** Chain wiki DB tasks so open/close cycles never overlap (fixes "concurrent use forbidden"). */
+export function runOnWikiDb<T>(task: () => Promise<T>): Promise<T> {
+  if (wikiDbRunDepth > 0) {
+    return task();
+  }
+  const run = wikiDbChain.then(async () => {
+    wikiDbRunDepth += 1;
+    try {
+      return await task();
+    } finally {
+      wikiDbRunDepth -= 1;
+    }
+  });
+  wikiDbChain = run.catch(() => {});
+  return run;
+}
 
 export interface WikiNamespaceCache {
   namespace: WikiNamespace;
@@ -20,6 +44,8 @@ interface WikiState {
   loadNamespace: (store: WikiStore, book: Book) => Promise<WikiNamespace>;
   loadNamespaceById: (store: WikiStore, namespaceId: string) => Promise<WikiNamespace | null>;
   loadAllNamespaces: (store: WikiStore) => Promise<WikiNamespace[]>;
+  /** Clear all cached wiki state (e.g. after backup restore replaces wiki.db). */
+  invalidateAll: () => void;
   setActiveNamespace: (id: string | null) => void;
   invalidatePage: (namespaceId: string, pageId: string) => void;
   invalidateNamespace: (namespaceId: string) => void;
@@ -73,9 +99,7 @@ export const useWikiStore = create<WikiState>((set, get) => ({
       return namespace;
     };
 
-    const run = wikiNamespaceLoadChain.then(() => task());
-    wikiNamespaceLoadChain = run.catch(() => {});
-    return run;
+    return runOnWikiDb(task);
   },
 
   loadNamespaceById: async (store: WikiStore, namespaceId: string) => {
@@ -116,9 +140,7 @@ export const useWikiStore = create<WikiState>((set, get) => ({
       return namespace;
     };
 
-    const run = wikiNamespaceLoadChain.then(() => task());
-    wikiNamespaceLoadChain = run.catch(() => {});
-    return run;
+    return runOnWikiDb(task);
   },
 
   loadAllNamespaces: async (store: WikiStore) => {
@@ -127,10 +149,15 @@ export const useWikiStore = create<WikiState>((set, get) => ({
       set({ allNamespaces: list });
       return list;
     };
-    const run = wikiNamespaceLoadChain.then(() => task());
-    wikiNamespaceLoadChain = run.catch(() => {});
-    return run;
+    return runOnWikiDb(task);
   },
+
+  invalidateAll: () =>
+    set({
+      activeNamespaceId: null,
+      allNamespaces: [],
+      caches: {},
+    }),
 
   setActiveNamespace: (id: string | null) => set({ activeNamespaceId: id }),
 

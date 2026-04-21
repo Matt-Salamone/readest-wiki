@@ -4,7 +4,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import TextEditor from '@/components/TextEditor';
 import { WikiStore, wikiTitleToSlug } from '@/services/wiki';
+import { buildWikiSpoilerContext, isPageVisible } from '@/app/reader/utils/wikiSpoiler';
 import { useBookDataStore } from '@/store/bookDataStore';
+import { useLibraryStore } from '@/store/libraryStore';
+import { useReaderStore } from '@/store/readerStore';
 import { useWikiStore } from '@/store/wikiStore';
 import { useWikiCaptureStore } from '@/store/wikiCaptureStore';
 import { useWikiPanelStore } from '@/store/wikiPanelStore';
@@ -31,6 +34,8 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const getBookData = useBookDataStore((s) => s.getBookData);
+  const library = useLibraryStore((s) => s.library);
+  const progressLocation = useReaderStore((s) => s.viewStates[bookKey]?.progress?.location ?? null);
   const loadNamespace = useWikiStore((s) => s.loadNamespace);
   const activeNamespaceId = useWikiStore((s) => s.activeNamespaceId);
   const caches = useWikiStore((s) => s.caches);
@@ -107,6 +112,17 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
   }, [visible, bookKey, getBookData, appService, loadNamespace, _]);
 
   const cache = activeNamespaceId ? caches[activeNamespaceId] : null;
+  const book = getBookData(bookKey)?.book;
+
+  const spoilerCtx = useMemo(() => {
+    if (!cache?.namespace || !book) return null;
+    return buildWikiSpoilerContext(cache.namespace, library, {
+      activeBookKey: bookKey,
+      activeBook: book,
+      activeLocation: progressLocation,
+    });
+  }, [cache?.namespace, library, bookKey, book, progressLocation]);
+
   const pagesList = useMemo(() => {
     if (!cache) return [];
     return Object.values(cache.pages).sort((a, b) =>
@@ -116,9 +132,12 @@ const WikiQuickCapture: React.FC<WikiQuickCaptureProps> = ({ bookKey }) => {
 
   const filteredPages = useMemo(() => {
     const q = pageSearch.trim().toLowerCase();
-    if (!q) return pagesList.slice(0, 50);
-    return pagesList.filter((p) => p.title.toLowerCase().includes(q)).slice(0, 50);
-  }, [pagesList, pageSearch]);
+    let list = !q ? pagesList : pagesList.filter((p) => p.title.toLowerCase().includes(q));
+    if (spoilerCtx) {
+      list = list.filter((p) => isPageVisible(p, spoilerCtx));
+    }
+    return list.slice(0, 50);
+  }, [pagesList, pageSearch, spoilerCtx]);
 
   const slugMatchPage = useMemo(() => {
     const slug = wikiTitleToSlug(pageSearch.trim());

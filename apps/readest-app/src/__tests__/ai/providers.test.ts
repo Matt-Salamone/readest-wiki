@@ -25,7 +25,6 @@ vi.mock('ai-sdk-ollama', () => ({
 }));
 
 import { OllamaProvider } from '@/services/ai/providers/OllamaProvider';
-import { AIGatewayProvider } from '@/services/ai/providers/AIGatewayProvider';
 import { getAIProvider } from '@/services/ai/providers';
 import type { AISettings } from '@/services/ai/types';
 import { DEFAULT_AI_SETTINGS } from '@/services/ai/constants';
@@ -99,86 +98,12 @@ describe('OllamaProvider', () => {
   });
 });
 
-describe('AIGatewayProvider', () => {
-  test('should throw if no API key', () => {
-    const settings: AISettings = { ...DEFAULT_AI_SETTINGS, enabled: true, provider: 'ai-gateway' };
-
-    expect(() => new AIGatewayProvider(settings)).toThrow('API key required');
-  });
-
-  test('should create provider with API key', () => {
-    const settings: AISettings = {
-      ...DEFAULT_AI_SETTINGS,
-      enabled: true,
-      provider: 'ai-gateway',
-      aiGatewayApiKey: 'test-key',
-    };
-    const provider = new AIGatewayProvider(settings);
-
-    expect(provider.id).toBe('ai-gateway');
-    expect(provider.name).toBe('AI Gateway (Cloud)');
-    expect(provider.requiresAuth).toBe(true);
-  });
-
-  test('isAvailable should return true if key exists', async () => {
-    const settings: AISettings = {
-      ...DEFAULT_AI_SETTINGS,
-      enabled: true,
-      provider: 'ai-gateway',
-      aiGatewayApiKey: 'test-key',
-    };
-    const provider = new AIGatewayProvider(settings);
-
-    const result = await provider.isAvailable();
-    expect(result).toBe(true);
-  });
-
-  test('isAvailable should return false if key does not exist', async () => {
-    const settings: AISettings = {
-      ...DEFAULT_AI_SETTINGS,
-      enabled: true,
-      provider: 'ai-gateway',
-      aiGatewayApiKey: '',
-    };
-
-    // provider throws on construction if no key, so we test via getAIProvider fallback
-    expect(() => new AIGatewayProvider(settings)).toThrow('API key required');
-  });
-
-  test('healthCheck should return false if key does not exist', async () => {
-    const settings: AISettings = {
-      ...DEFAULT_AI_SETTINGS,
-      enabled: true,
-      provider: 'ai-gateway',
-      aiGatewayApiKey: 'valid-key',
-    };
-    const provider = new AIGatewayProvider(settings);
-
-    // override key after construction to simulate missing key check in healthCheck
-    (provider as unknown as { settings: AISettings }).settings.aiGatewayApiKey = '';
-    const result = await provider.healthCheck();
-    expect(result).toBe(false);
-  });
-});
-
 describe('getAIProvider', () => {
   test('should return OllamaProvider for ollama', () => {
     const settings: AISettings = { ...DEFAULT_AI_SETTINGS, enabled: true, provider: 'ollama' };
     const provider = getAIProvider(settings);
 
     expect(provider.id).toBe('ollama');
-  });
-
-  test('should return AIGatewayProvider for ai-gateway', () => {
-    const settings: AISettings = {
-      ...DEFAULT_AI_SETTINGS,
-      enabled: true,
-      provider: 'ai-gateway',
-      aiGatewayApiKey: 'test-key',
-    };
-    const provider = getAIProvider(settings);
-
-    expect(provider.id).toBe('ai-gateway');
   });
 
   test('should throw for unknown provider', () => {

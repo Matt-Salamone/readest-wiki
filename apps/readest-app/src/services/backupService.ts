@@ -103,6 +103,23 @@ async function addBackupEntriesToZip(
       console.warn(`Skipping file ${file.path}:`, error);
     }
   }
+
+  // Personal wiki SQLite (wiki.db under Data/) — prefix `data/` in the zip
+  try {
+    const dataFiles = await appService.readDirectory('', 'Data');
+    const wikiFiles = dataFiles.filter((f) => /^wiki\.db(-shm|-wal)?$/.test(f.path));
+    for (const f of wikiFiles) {
+      try {
+        const content = await appService.readFile(f.path, 'Data', 'binary');
+        const data = new Uint8Array(content as ArrayBuffer);
+        await writer.add(`data/${f.path}`, new Uint8ArrayReader(data), { level: 0 });
+      } catch (error) {
+        console.warn(`Skipping wiki file ${f.path}:`, error);
+      }
+    }
+  } catch (error) {
+    console.warn('Skipping Data directory for wiki backup:', error);
+  }
 }
 
 const ZIP_WRITE_CONFIG: Partial<Configuration> = {
@@ -309,6 +326,21 @@ export async function restoreFromBackupZip(
       }
     } catch (error) {
       console.warn(`Failed to import orphan book from ${hash}:`, error);
+    }
+  }
+
+  const wikiBackupEntries = fileEntries.filter((e) =>
+    /^data\/wiki\.db(-shm|-wal)?$/.test(e.filename),
+  );
+  if (wikiBackupEntries.length > 0) {
+    const { useWikiStore } = await import('@/store/wikiStore');
+    const { WikiStore } = await import('@/services/wiki');
+    useWikiStore.getState().invalidateAll();
+    await new WikiStore(appService).closeDb();
+    for (const entry of wikiBackupEntries) {
+      const data = await entry.getData!(new Uint8ArrayWriter());
+      const rel = entry.filename.replace(/^data\//, '');
+      await appService.writeFile(rel, 'Data', data.buffer as ArrayBuffer);
     }
   }
 

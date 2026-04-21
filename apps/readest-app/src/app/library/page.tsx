@@ -35,6 +35,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useUICSS } from '@/hooks/useUICSS';
 import { useDemoBooks } from './hooks/useDemoBooks';
 import { useBooksSync } from './hooks/useBooksSync';
+import { useWikiSyncGlobal } from './hooks/useWikiSyncGlobal';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTransferStore } from '@/store/transferStore';
 import { useScreenWakeLock } from '@/hooks/useScreenWakeLock';
@@ -73,6 +74,7 @@ import {
 import Spinner from '@/components/Spinner';
 import LibraryHeader from './components/LibraryHeader';
 import Bookshelf from './components/Bookshelf';
+import LibraryWikiQuickNoteModal from './components/LibraryWikiQuickNoteModal';
 import GroupHeader from './components/GroupHeader';
 import useShortcuts from '@/hooks/useShortcuts';
 import DropIndicator from '@/components/DropIndicator';
@@ -119,6 +121,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   const [isSelectAll, setIsSelectAll] = useState(false);
   const [isSelectNone, setIsSelectNone] = useState(false);
   const [showDetailsBook, setShowDetailsBook] = useState<Book | null>(null);
+  const [libraryWikiNoteBook, setLibraryWikiNoteBook] = useState<Book | null>(null);
   const [currentGroupPath, setCurrentGroupPath] = useState<string | undefined>(undefined);
   const [currentSeriesAuthorGroup, setCurrentSeriesAuthorGroup] = useState<{
     groupBy: typeof LibraryGroupByType.Series | typeof LibraryGroupByType.Author;
@@ -162,6 +165,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   useTransferQueue(libraryLoaded);
 
   const { pullLibrary, pushLibrary } = useBooksSync();
+  useWikiSyncGlobal();
   const { isDragging } = useDragDropImport();
 
   usePullToRefresh(
@@ -970,6 +974,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
                 handleBookDelete={handleBookDelete('both')}
                 handleSetSelectMode={handleSetSelectMode}
                 handleShowDetailsBook={handleShowDetailsBook}
+                handleOpenLibraryWikiNote={setLibraryWikiNoteBook}
                 handleLibraryNavigation={handleLibraryNavigation}
                 booksTransferProgress={booksTransferProgress}
                 handlePushLibrary={pushLibrary}
@@ -1005,8 +1010,13 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
           handleBookDeleteCloudBackup={handleBookDelete('cloud')}
           handleBookDeleteLocalCopy={handleBookDelete('local')}
           handleBookMetadataUpdate={handleUpdateMetadata}
+          onAddWikiNote={() => setLibraryWikiNoteBook(showDetailsBook)}
         />
       )}
+      <LibraryWikiQuickNoteModal
+        book={libraryWikiNoteBook}
+        onClose={() => setLibraryWikiNoteBook(null)}
+      />
       {isTransferQueueOpen && (
         <ModalPortal>
           <TransferQueuePanel />

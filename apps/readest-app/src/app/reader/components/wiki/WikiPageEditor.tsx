@@ -6,7 +6,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TextEditor from '@/components/TextEditor';
 import type { TextEditorRef } from '@/components/TextEditor';
 import { WikiStore } from '@/services/wiki';
-import type { WikiBlock, WikiPage, WikiPageType, WikiTag } from '@/types/wiki';
+import type { SpoilerContext, WikiBlock, WikiPage, WikiPageType, WikiTag } from '@/types/wiki';
+import { isPageVisible } from '@/app/reader/utils/wikiSpoiler';
+import { RiLock2Line } from 'react-icons/ri';
 import { eventDispatcher } from '@/utils/event';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -35,6 +37,7 @@ interface WikiPageEditorProps {
   onReload: () => Promise<void>;
   /** If set (e.g. /wiki), used instead of wiki panel store for page selection. */
   onSelectPage?: (pageId: string | null) => void;
+  spoilerCtx?: SpoilerContext | null;
 }
 
 const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
@@ -47,6 +50,7 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
   tagsById,
   onReload,
   onSelectPage,
+  spoilerCtx,
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
@@ -88,13 +92,16 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
   const summarySuggestItems = useMemo(() => {
     if (!suggestCtx?.active || summaryMode !== 'edit') return [];
     const q = suggestCtx.query.trim().toLowerCase();
-    const list = !q ? pagesList : pagesList.filter((p) => p.title.toLowerCase().includes(q));
+    let list = !q ? pagesList : pagesList.filter((p) => p.title.toLowerCase().includes(q));
+    if (spoilerCtx) {
+      list = list.filter((p) => isPageVisible(p, spoilerCtx));
+    }
     return list.slice(0, 12).map((p) => ({
       id: p.id,
       title: p.title,
       isGhost: p.isGhost === 1,
     }));
-  }, [suggestCtx, summaryMode, pagesList]);
+  }, [suggestCtx, summaryMode, pagesList, spoilerCtx]);
 
   let summarySuggestPos = { top: 0, left: 0 };
   if (
@@ -117,6 +124,16 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
       }
     },
     [onSelectPage, setActivePageId],
+  );
+
+  const handleCreateGhostForTitle = useCallback(
+    async (rawTitle: string) => {
+      if (!wiki || !namespaceId) return;
+      const pageRow = await wiki.reviveGhostForTitle(namespaceId, rawTitle);
+      await reloadWiki();
+      handleNavigateToPage(pageRow.id);
+    },
+    [wiki, namespaceId, reloadWiki, handleNavigateToPage],
   );
 
   const commitTitle = async () => {
@@ -173,6 +190,8 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
     await reloadWiki();
   };
 
+  const pageLocked = Boolean(spoilerCtx && page && !isPageVisible(page, spoilerCtx));
+
   if (!pageId || !page || !namespaceId || !wiki) {
     return (
       <div className='text-base-content/70 flex flex-1 items-center justify-center p-6 text-sm'>
@@ -227,85 +246,114 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
           </div>
         ) : null}
 
-        <div className='mb-1 flex flex-wrap items-center gap-2'>
-          <span className='text-xs font-semibold'>{_('Summary')}</span>
-          <div className='join'>
-            <button
-              type='button'
-              className={clsx('btn join-item btn-xs', summaryMode === 'view' && 'btn-active')}
-              onClick={() => {
-                void (async () => {
-                  if (summaryMode === 'edit') {
-                    await saveSummary();
-                  }
-                  setSummaryMode('view');
-                })();
-              }}
-            >
-              {_('View')}
-            </button>
-            <button
-              type='button'
-              className={clsx('btn join-item btn-xs', summaryMode === 'edit' && 'btn-active')}
-              onClick={() => {
-                setSummaryDraft(page.summaryMarkdown ?? '');
-                setSummaryMode('edit');
-              }}
-            >
-              {_('Edit')}
-            </button>
+        {pageLocked ? (
+          <div className='border-base-300 bg-base-200/80 mb-4 flex flex-col items-center gap-2 rounded-lg border p-4 text-center'>
+            <RiLock2Line className='text-base-content/50 h-8 w-8' aria-hidden />
+            <p className='text-base-content/80 text-sm font-medium'>
+              {_('Keep reading to unlock')}
+            </p>
           </div>
-        </div>
-
-        {summaryMode === 'view' ? (
-          <WikiMarkdown
-            markdown={page.summaryMarkdown ?? ''}
-            pagesBySlug={pagesBySlug}
-            onWikiPageNavigate={handleNavigateToPage}
-            className='text-sm'
-          />
         ) : (
-          <div className={clsx('relative', WIKI_TEXTAREA_FOCUS_WRAP)}>
-            <TextEditor
-              ref={summaryRef}
-              value={summaryDraft}
-              onChange={setSummaryDraft}
-              onCaretChange={(caret) => setSummaryCaret(caret)}
-              minRows={4}
-              maxRows={20}
-              className='textarea textarea-bordered w-full font-mono text-sm'
-              onSave={() => void saveSummary()}
-            />
-            <WikiBracketSuggest
-              open={Boolean(suggestCtx?.active && summarySuggestItems.length > 0)}
-              top={summarySuggestPos.top}
-              left={summarySuggestPos.left}
-              items={summarySuggestItems}
-              onPick={(title) => {
-                const c = getWikiBracketSuggestContext(summaryDraft, summaryCaret);
-                if (!c?.active) return;
-                const { nextValue, nextCaret } = acceptWikiBracketTitle(
-                  summaryDraft,
-                  summaryCaret,
-                  c,
-                  title,
-                );
-                setSummaryDraft(nextValue);
-                setSummaryCaret(nextCaret);
-                requestAnimationFrame(() => {
-                  const el = summaryRef.current?.getElement();
-                  if (el) {
-                    el.focus();
-                    el.setSelectionRange(nextCaret, nextCaret);
-                  }
-                });
-              }}
-            />
-          </div>
+          <>
+            <div className='mb-1 flex flex-wrap items-center gap-2'>
+              <span className='text-xs font-semibold'>{_('Summary')}</span>
+              <div className='join'>
+                <button
+                  type='button'
+                  className={clsx('btn join-item btn-xs', summaryMode === 'view' && 'btn-active')}
+                  onClick={() => {
+                    void (async () => {
+                      if (summaryMode === 'edit') {
+                        await saveSummary();
+                      }
+                      setSummaryMode('view');
+                    })();
+                  }}
+                >
+                  {_('View')}
+                </button>
+                <button
+                  type='button'
+                  className={clsx('btn join-item btn-xs', summaryMode === 'edit' && 'btn-active')}
+                  onClick={() => {
+                    setSummaryDraft(page.summaryMarkdown ?? '');
+                    setSummaryMode('edit');
+                  }}
+                >
+                  {_('Edit')}
+                </button>
+              </div>
+            </div>
+
+            {summaryMode === 'view' ? (
+              <WikiMarkdown
+                markdown={page.summaryMarkdown ?? ''}
+                pagesBySlug={pagesBySlug}
+                onWikiPageNavigate={handleNavigateToPage}
+                onCreateGhostForTitle={handleCreateGhostForTitle}
+                className='text-sm'
+              />
+            ) : (
+              <div className={clsx('relative', WIKI_TEXTAREA_FOCUS_WRAP)}>
+                <TextEditor
+                  ref={summaryRef}
+                  value={summaryDraft}
+                  onChange={setSummaryDraft}
+                  onCaretChange={(caret) => setSummaryCaret(caret)}
+                  minRows={4}
+                  maxRows={20}
+                  className='textarea textarea-bordered w-full font-mono text-sm'
+                  onSave={() => void saveSummary()}
+                />
+                <WikiBracketSuggest
+                  open={Boolean(suggestCtx?.active && summarySuggestItems.length > 0)}
+                  top={summarySuggestPos.top}
+                  left={summarySuggestPos.left}
+                  items={summarySuggestItems}
+                  onPick={(title) => {
+                    const c = getWikiBracketSuggestContext(summaryDraft, summaryCaret);
+                    if (!c?.active) return;
+                    const { nextValue, nextCaret } = acceptWikiBracketTitle(
+                      summaryDraft,
+                      summaryCaret,
+                      c,
+                      title,
+                    );
+                    setSummaryDraft(nextValue);
+                    setSummaryCaret(nextCaret);
+                    requestAnimationFrame(() => {
+                      const el = summaryRef.current?.getElement();
+                      if (el) {
+                        el.focus();
+                        el.setSelectionRange(nextCaret, nextCaret);
+                      }
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <div className='flex justify-end'>
+      {pageLocked ? null : (
+        <WikiBlockList
+          bookKey={bookKey}
+          pageId={page.id}
+          namespaceId={namespaceId}
+          blocks={blocks}
+          tagsById={tagsById}
+          pagesBySlug={pagesBySlug}
+          pagesList={pagesList}
+          wiki={wiki}
+          onReload={reloadWiki}
+          onNavigateToPage={handleNavigateToPage}
+          onCreateGhostForTitle={handleCreateGhostForTitle}
+          spoilerCtx={spoilerCtx}
+        />
+      )}
+
+      <div className='border-base-300 mt-6 flex justify-end border-t pt-4'>
         <button
           type='button'
           className='btn btn-ghost btn-sm text-error'
@@ -314,19 +362,6 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
           {_('Delete page')}
         </button>
       </div>
-
-      <WikiBlockList
-        bookKey={bookKey}
-        pageId={page.id}
-        namespaceId={namespaceId}
-        blocks={blocks}
-        tagsById={tagsById}
-        pagesBySlug={pagesBySlug}
-        pagesList={pagesList}
-        wiki={wiki}
-        onReload={reloadWiki}
-        onNavigateToPage={handleNavigateToPage}
-      />
     </div>
   );
 };

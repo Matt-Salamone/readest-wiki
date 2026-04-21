@@ -27,6 +27,7 @@ interface BookDetailModalProps {
   handleBookDeleteCloudBackup?: (book: Book) => void;
   handleBookDeleteLocalCopy?: (book: Book) => void;
   handleBookMetadataUpdate?: (book: Book, updatedMetadata: BookMetadata) => void;
+  onAddWikiNote?: () => void;
 }
 
 interface DeleteConfig {
@@ -45,6 +46,7 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
   handleBookDeleteCloudBackup,
   handleBookDeleteLocalCopy,
   handleBookMetadataUpdate,
+  onAddWikiNote,
 }) => {
   const _ = useTranslation();
   const { envConfig, appService } = useEnv();
@@ -223,6 +225,7 @@ const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 book={book}
                 metadata={bookMeta}
                 fileSize={fileSize}
+                onAddWikiNote={onAddWikiNote}
                 onEdit={handleBookMetadataUpdate ? handleEditMetadata : undefined}
                 onDelete={handleBookDelete ? handleDelete : undefined}
                 onDeleteCloudBackup={

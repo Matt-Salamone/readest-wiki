@@ -1,21 +1,58 @@
 import { Book, BookConfig, BookNote, BookDataRecord } from '@/types/book';
+import type {
+  DBWikiBlock,
+  DBWikiLink,
+  DBWikiNamespace,
+  DBWikiPage,
+  DBWikiSectionCatalog,
+  DBWikiTag,
+} from '@/types/records';
+import type {
+  WikiBlock,
+  WikiLink,
+  WikiNamespace,
+  WikiPage,
+  WikiSectionCatalogEntry,
+  WikiTag,
+} from '@/types/wiki';
 import { getAPIBaseUrl } from '@/services/environment';
 import { getAccessToken } from '@/utils/access';
 import { fetchWithTimeout } from '@/utils/fetch';
 
 const SYNC_API_ENDPOINT = getAPIBaseUrl() + '/sync';
 
-export type SyncType = 'books' | 'configs' | 'notes';
+export type SyncType = 'books' | 'configs' | 'notes' | 'wiki';
 export type SyncOp = 'push' | 'pull' | 'both';
 
 interface BookRecord extends BookDataRecord, Book {}
 interface BookConfigRecord extends BookDataRecord, BookConfig {}
 interface BookNoteRecord extends BookDataRecord, BookNote {}
 
+/** Payload for POST /api/sync (camelCase domain rows; server transforms to DB). */
+export interface WikiSyncPayload {
+  namespaces?: Partial<WikiNamespace>[];
+  pages?: Partial<WikiPage>[];
+  blocks?: Partial<WikiBlock>[];
+  tags?: Partial<WikiTag>[];
+  links?: Partial<WikiLink>[];
+  section_catalog?: Partial<WikiSectionCatalogEntry>[];
+}
+
+/** GET /api/sync returns snake_case DB rows from Supabase. */
+export interface WikiSyncResult {
+  namespaces: DBWikiNamespace[];
+  pages: DBWikiPage[];
+  blocks: DBWikiBlock[];
+  tags: DBWikiTag[];
+  links: DBWikiLink[];
+  section_catalog: DBWikiSectionCatalog[];
+}
+
 export interface SyncResult {
   books: BookRecord[] | null;
   notes: BookNoteRecord[] | null;
   configs: BookConfigRecord[] | null;
+  wiki?: WikiSyncResult | null;
 }
 
 export type SyncRecord = BookRecord & BookConfigRecord & BookNoteRecord;
@@ -24,6 +61,7 @@ export interface SyncData {
   books?: Partial<BookRecord>[];
   notes?: Partial<BookNoteRecord>[];
   configs?: Partial<BookConfigRecord>[];
+  wiki?: WikiSyncPayload;
 }
 
 export class SyncClient {

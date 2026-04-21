@@ -134,6 +134,9 @@ export interface BookNote {
   createdAt: number;
   updatedAt: number;
   deletedAt?: number | null;
+  /** Wiki page opened when this in-book highlight was created via “Add to Wiki”. */
+  wikiPageId?: string | null;
+  wikiBlockId?: string | null;
 }
 
 export interface BooknoteGroup {
@@ -413,10 +416,8 @@ export interface BookConfig {
   lastSyncedAtNotes?: number;
   lastPushedAtConfig?: number;
   lastPushedAtNotes?: number;
+  lastPushedAtWiki?: number;
   foliateImportedAt?: number;
-
-  // Per-book switch for hardcover exports in reader menu.
-  hardcoverSyncEnabled?: boolean;
 
   updatedAt: number;
 }

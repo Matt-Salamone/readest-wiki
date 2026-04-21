@@ -5,6 +5,7 @@ import {
   getTranslator,
   getTranslators,
   isTranslatorAvailable,
+  normalizeTranslatorName,
   TranslatorName,
 } from '@/services/translators';
 import { getFromCache, storeInCache, UseTranslatorOptions } from '@/services/translators';
@@ -14,12 +15,13 @@ import { getLocale } from '@/utils/misc';
 import { useTranslation } from './useTranslation';
 
 export function useTranslator({
-  provider = 'deepl',
+  provider: providerInput = 'google',
   sourceLang = 'AUTO',
   targetLang = 'EN',
   enablePolishing = true,
   enablePreprocessing = true,
 }: UseTranslatorOptions = {}) {
+  const provider = normalizeTranslatorName(providerInput);
   const _ = useTranslation();
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -29,17 +31,18 @@ export function useTranslator({
 
   useEffect(() => {
     setLoading(false);
-  }, [provider, sourceLang, targetLang]);
+  }, [providerInput, sourceLang, targetLang]);
 
   useEffect(() => {
+    const normalized = normalizeTranslatorName(providerInput);
     const availableTranslators = getTranslators().filter((t) => isTranslatorAvailable(t, !!token));
     const selectedTranslator =
-      availableTranslators.find((t) => t.name === provider) || availableTranslators[0]!;
+      availableTranslators.find((t) => t.name === normalized) || availableTranslators[0]!;
     const selectedProviderName = selectedTranslator.name as TranslatorName;
     setTransltor(getTranslator(selectedProviderName));
     setSelectedProvider(selectedProviderName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  }, [providerInput]);
 
   const translate = useCallback(
     async (

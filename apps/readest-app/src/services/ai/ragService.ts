@@ -131,10 +131,7 @@ export async function indexBook(
     }
 
     onProgress?.({ current: 0, total: allChunks.length, phase: 'embedding' });
-    const embeddingModelName =
-      settings.provider === 'ollama'
-        ? settings.ollamaEmbeddingModel
-        : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
+    const embeddingModelName = settings.ollamaEmbeddingModel;
     aiLogger.embedding.start(embeddingModelName, allChunks.length);
 
     const texts = allChunks.map((c) => c.text);

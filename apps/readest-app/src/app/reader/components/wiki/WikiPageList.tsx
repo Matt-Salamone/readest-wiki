@@ -1,8 +1,10 @@
 import clsx from 'clsx';
 import React, { useMemo, useState } from 'react';
+import { RiLock2Line } from 'react-icons/ri';
 
 import { WikiStore, wikiTitleToSlug } from '@/services/wiki';
-import type { WikiPage, WikiPageType } from '@/types/wiki';
+import type { SpoilerContext, WikiPage, WikiPageType } from '@/types/wiki';
+import { isPageVisible } from '@/app/reader/utils/wikiSpoiler';
 import { useTranslation } from '@/hooks/useTranslation';
 import { WIKI_PAGE_TYPES } from '@/app/reader/components/wiki/wikiPageTypes';
 
@@ -19,6 +21,7 @@ interface WikiPageListProps {
   onPageTypeFilterChange?: (filter: WikiPageType | 'All') => void;
   sortMode?: 'alpha' | 'chronological';
   onSortModeChange?: (mode: 'alpha' | 'chronological') => void;
+  spoilerCtx?: SpoilerContext | null;
 }
 
 const WikiPageList: React.FC<WikiPageListProps> = ({
@@ -33,6 +36,7 @@ const WikiPageList: React.FC<WikiPageListProps> = ({
   onPageTypeFilterChange,
   sortMode = 'alpha',
   onSortModeChange,
+  spoilerCtx,
 }) => {
   const _ = useTranslation();
   const [search, setSearch] = useState('');
@@ -171,7 +175,15 @@ const WikiPageList: React.FC<WikiPageListProps> = ({
               )}
               onClick={() => onSelectPage(p.id)}
             >
-              <span className='line-clamp-2 break-words'>{p.title}</span>
+              <span className='flex items-start gap-1'>
+                {spoilerCtx && !isPageVisible(p, spoilerCtx) ? (
+                  <RiLock2Line
+                    className='text-base-content/50 mt-0.5 h-3.5 w-3.5 shrink-0'
+                    aria-label={_('Locked')}
+                  />
+                ) : null}
+                <span className='line-clamp-2 break-words'>{p.title}</span>
+              </span>
               <span className='text-base-content/60 mt-0.5 block text-xs'>
                 {p.pageType ?? ''}
                 {p.isGhost ? (

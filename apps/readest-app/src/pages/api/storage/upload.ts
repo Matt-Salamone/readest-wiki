@@ -6,8 +6,13 @@ import {
   validateUserAndToken,
   STORAGE_QUOTA_GRACE_BYTES,
 } from '@/utils/access';
-import { getDownloadSignedUrl, getUploadSignedUrl } from '@/utils/object';
+import {
+  getDownloadSignedUrl,
+  getSupabaseSignedUploadParts,
+  getUploadSignedUrl,
+} from '@/utils/object';
 import { READEST_PUBLIC_STORAGE_BASE_URL } from '@/services/constants';
+import { getStorageType, getSupabaseBooksBucket, getSupabaseTempBucket } from '@/utils/storage';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   await runMiddleware(req, res, corsAllMethods);
@@ -28,6 +33,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const timeStr = datetime.toISOString().replace(/[-:]/g, '').replace('T', '').slice(0, 10);
       const userStr = user.id.slice(0, 8);
       const fileKey = `temp/img/${timeStr}/${userStr}/${fileName}`;
+      if (getStorageType() === 'supabase') {
+        const tempBucket = getSupabaseTempBucket();
+        const parts = await getSupabaseSignedUploadParts(fileKey, tempBucket);
+        const supabase = createSupabaseAdminClient();
+        const { data: pub } = supabase.storage.from(parts.bucket).getPublicUrl(parts.path);
+        return res.status(200).json({
+          uploadUrl: parts.signedUrl,
+          downloadUrl: pub.publicUrl,
+          supabaseSignedUpload: {
+            bucket: parts.bucket,
+            path: parts.path,
+            token: parts.token,
+          },
+        });
+      }
       const bucketName = process.env['TEMP_STORAGE_PUBLIC_BUCKET_NAME'] || '';
       const uploadUrl = await getUploadSignedUrl(fileKey, fileSize, 1800, bucketName);
       const downloadUrl = await getDownloadSignedUrl(fileKey, 3 * 86400, bucketName);
@@ -88,6 +108,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
+      if (getStorageType() === 'supabase') {
+        const parts = await getSupabaseSignedUploadParts(fileKey, getSupabaseBooksBucket());
+        return res.status(200).json({
+          uploadUrl: parts.signedUrl,
+          fileKey,
+          usage: usage + fileSize,
+          quota,
+          supabaseSignedUpload: {
+            bucket: parts.bucket,
+            path: parts.path,
+            token: parts.token,
+          },
+        });
+      }
+
       const uploadUrl = await getUploadSignedUrl(fileKey, objSize, 1800);
 
       res.status(200).json({

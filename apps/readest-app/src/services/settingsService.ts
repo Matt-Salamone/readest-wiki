@@ -145,6 +145,9 @@ export async function loadSettings(ctx: Context): Promise<SystemSettings> {
     ...DEFAULT_AI_SETTINGS,
     ...settings.aiSettings,
   };
+  if (settings.aiSettings.provider !== 'ollama') {
+    settings.aiSettings = { ...settings.aiSettings, provider: 'ollama' };
+  }
 
   settings.localBooksDir = await ctx.fs.getPrefix('Books');
 

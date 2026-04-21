@@ -1,13 +1,13 @@
 import { PiUserCircle } from 'react-icons/pi';
 import { useTranslation } from '@/hooks/useTranslation';
-import { PlanDetails } from '../utils/plan';
+import { PlanDisplay } from '../utils/planDisplay';
 import UserAvatar from '@/components/UserAvatar';
 
 interface UserInfoProps {
   avatarUrl?: string;
   userFullName: string;
   userEmail: string;
-  planDetails: PlanDetails;
+  planDetails: PlanDisplay;
 }
 
 const UserInfo: React.FC<UserInfoProps> = ({ avatarUrl, userFullName, userEmail, planDetails }) => {

@@ -37,7 +37,6 @@ function makeSettings(overrides: Partial<SystemSettings> = {}): SystemSettings {
     autoImportBooksOnOpen: false,
     savedBookCoverForLockScreen: '',
     savedBookCoverForLockScreenPath: '',
-    telemetryEnabled: false,
     discordRichPresenceEnabled: false,
     libraryViewMode: 'grid',
     librarySortBy: 'updated',
@@ -55,6 +54,7 @@ function makeSettings(overrides: Partial<SystemSettings> = {}): SystemSettings {
     lastSyncedAtBooks: 0,
     lastSyncedAtConfigs: 0,
     lastSyncedAtNotes: 0,
+    lastSyncedAtWiki: 0,
     migrationVersion: 0,
     ...overrides,
   } as SystemSettings;

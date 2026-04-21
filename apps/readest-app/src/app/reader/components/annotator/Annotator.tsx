@@ -14,13 +14,15 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
 import { useWikiCaptureStore } from '@/store/wikiCaptureStore';
+import { useWikiPanelStore } from '@/store/wikiPanelStore';
+import { WikiStore } from '@/services/wiki';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useDeviceControlStore } from '@/store/deviceStore';
 import { useFoliateEvents } from '../../hooks/useFoliateEvents';
 import { useNotesSync } from '../../hooks/useNotesSync';
+import { useWikiSync } from '../../hooks/useWikiSync';
 import { useReadwiseSync } from '../../hooks/useReadwiseSync';
-import { useHardcoverSync } from '../../hooks/useHardcoverSync';
 import { useTextSelector } from '../../hooks/useTextSelector';
 import { Point, Position, TextSelection } from '@/utils/sel';
 import { getPopupPosition, getPosition, getTextFromRange } from '@/utils/sel';
@@ -56,9 +58,8 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const { listenToNativeTouchEvents } = useDeviceControlStore();
 
   useNotesSync(bookKey);
+  useWikiSync(bookKey);
   useReadwiseSync(bookKey);
-  useHardcoverSync(bookKey);
-
   const osPlatform = getOSPlatform();
   const config = getConfig(bookKey)!;
   const progress = getProgress(bookKey)!;
@@ -73,7 +74,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const [showAnnotPopup, setShowAnnotPopup] = useState(false);
   const [showWiktionaryPopup, setShowWiktionaryPopup] = useState(false);
   const [showWikipediaPopup, setShowWikipediaPopup] = useState(false);
-  const [showDeepLPopup, setShowDeepLPopup] = useState(false);
+  const [showTranslatorPopup, setShowTranslatorPopup] = useState(false);
   const [showProofreadPopup, setShowProofreadPopup] = useState(false);
   const [trianglePosition, setTrianglePosition] = useState<Position>();
   const [annotPopupPosition, setAnnotPopupPosition] = useState<Position>();
@@ -103,7 +104,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     showAnnotPopup ||
     showWiktionaryPopup ||
     showWikipediaPopup ||
-    showDeepLPopup ||
+    showTranslatorPopup ||
     showProofreadPopup;
 
   const popupPadding = useResponsiveSize(10);
@@ -204,7 +205,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       setShowAnnotPopup(false);
       setShowWiktionaryPopup(false);
       setShowWikipediaPopup(false);
-      setShowDeepLPopup(false);
+      setShowTranslatorPopup(false);
       setShowProofreadPopup(false);
       setEditingAnnotation(null);
     }, 500),
@@ -308,7 +309,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
               });
               // Show translation popup preferentially for PDF right-click
               setShowAnnotPopup(false);
-              setShowDeepLPopup(true);
+              setShowTranslatorPopup(true);
               setShowWiktionaryPopup(false);
               setShowWikipediaPopup(false);
             }
@@ -401,37 +402,65 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     );
     if (!annotation) return;
 
-    const { style, color, text, note } = annotation;
-    const selection = {
-      key: bookKey,
-      annotated: true,
-      text: text ?? '',
-      note: note ?? '',
-      rect: isNote ? detail.rect : undefined,
-      cfi,
-      index,
-      range,
-      page: annotation.page || progress.page,
+    const runDefaultAnnotationPopup = () => {
+      const { style, color, text, note } = annotation;
+      const sel = {
+        key: bookKey,
+        annotated: true,
+        text: text ?? '',
+        note: note ?? '',
+        rect: isNote ? detail.rect : undefined,
+        cfi,
+        index,
+        range,
+        page: annotation.page || progress.page,
+      };
+      if (isNote) {
+        setShowAnnotationNotes(true);
+        setHighlightOptionsVisible(false);
+        setEditingAnnotation(null);
+      } else {
+        setShowAnnotPopup(false);
+        setEditingAnnotation(null);
+        setShowAnnotationNotes(false);
+        setAnnotationNotes([]);
+        if (style && color) {
+          setSelectedStyle(style);
+          setSelectedColor(color);
+        }
+        if (style && range) {
+          setEditingAnnotation(annotation);
+        }
+      }
+      setSelection(sel);
+      handleUpToPopup();
     };
-    if (isNote) {
-      setShowAnnotationNotes(true);
-      setHighlightOptionsVisible(false);
-      setEditingAnnotation(null);
-    } else {
-      setShowAnnotPopup(false);
-      setEditingAnnotation(null);
-      setShowAnnotationNotes(false);
-      setAnnotationNotes([]);
-      if (style && color) {
-        setSelectedStyle(style);
-        setSelectedColor(color);
-      }
-      if (style && range) {
-        setEditingAnnotation(annotation);
-      }
+
+    if (!isNote && annotation.style === 'highlight' && !annotation.note && annotation.wikiPageId) {
+      useWikiPanelStore.getState().open(bookKey, annotation.wikiPageId);
+      return;
     }
-    setSelection(selection);
-    handleUpToPopup();
+
+    const bookHash = bookData.book?.hash;
+    if (!isNote && annotation.style === 'highlight' && !annotation.note && appService && bookHash) {
+      void (async () => {
+        try {
+          const wiki = new WikiStore(appService);
+          const blocks = await wiki.listBlocksForBook(bookHash);
+          const block = blocks.find((b) => b.cfi === cfi);
+          if (block?.pageId) {
+            useWikiPanelStore.getState().open(bookKey, block.pageId);
+            return;
+          }
+        } catch {
+          // fall through to default popup
+        }
+        runDefaultAnnotationPopup();
+      })();
+      return;
+    }
+
+    runDefaultAnnotationPopup();
   };
 
   useFoliateEvents(view, { onLoad, onCreateOverlay, onDrawAnnotation, onShowAnnotation });
@@ -624,7 +653,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
       containerRef.current?.focus();
     }
     setShowAnnotPopup(true);
-    setShowDeepLPopup(false);
+    setShowTranslatorPopup(false);
     setShowWiktionaryPopup(false);
     setShowWikipediaPopup(false);
   };
@@ -748,7 +777,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
     setShowAnnotPopup(false);
     setShowWiktionaryPopup(false);
     setShowWikipediaPopup(false);
-    setShowDeepLPopup(false);
+    setShowTranslatorPopup(false);
     setShowProofreadPopup(false);
     openWikiCaptureFromSelection({
       bookKey,
@@ -785,7 +814,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
   const handleTranslation = () => {
     if (!selection || !selection.text) return;
     setShowAnnotPopup(false);
-    setShowDeepLPopup(true);
+    setShowTranslatorPopup(true);
   };
 
   const handleSpeakText = async (oneTime = false) => {
@@ -1004,7 +1033,7 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
           onDismiss={handleDismissPopupAndSelection}
         />
       )}
-      {showDeepLPopup && trianglePosition && translatorPopupPosition && (
+      {showTranslatorPopup && trianglePosition && translatorPopupPosition && (
         <TranslatorPopup
           text={selection?.text as string}
           position={translatorPopupPosition}

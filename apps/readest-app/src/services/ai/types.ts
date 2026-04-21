@@ -1,6 +1,6 @@
 import type { LanguageModel, EmbeddingModel } from 'ai';
 
-export type AIProviderName = 'ollama' | 'ai-gateway';
+export type AIProviderName = 'ollama';
 
 export interface AIProvider {
   id: AIProviderName;
@@ -21,11 +21,6 @@ export interface AISettings {
   ollamaBaseUrl: string;
   ollamaModel: string;
   ollamaEmbeddingModel: string;
-
-  aiGatewayApiKey?: string;
-  aiGatewayModel?: string;
-  aiGatewayCustomModel?: string;
-  aiGatewayEmbeddingModel?: string;
 
   spoilerProtection: boolean;
   maxContextChunks: number;
@@ -81,7 +76,7 @@ export interface AIConversation {
   updatedAt: number;
 }
 
-// single message in an AI conversation
+// single message in a conversation
 export interface AIMessage {
   id: string;
   conversationId: string;

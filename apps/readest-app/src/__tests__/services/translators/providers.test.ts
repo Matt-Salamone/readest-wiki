@@ -43,7 +43,7 @@ vi.mock('@tauri-apps/plugin-http', () => ({
 }));
 
 // Stub Supabase so importing the full providers registry (which pulls in
-// deepl.ts → @/utils/access → @/utils/supabase) doesn't instantiate a real
+// google.ts (registry) → @/utils/supabase) doesn't instantiate a real
 // GoTrueClient on every `vi.resetModules()` round. Without this, each test
 // that dynamically imports the registry logs a "Multiple GoTrueClient
 // instances" warning from the real Supabase client.

@@ -2,6 +2,7 @@ import { getAPIBaseUrl, isWebAppPlatform } from '@/services/environment';
 import { AppService } from '@/types/system';
 import { getUserID } from '@/utils/access';
 import { fetchWithAuth } from '@/utils/fetch';
+import { createSupabaseClient } from '@/utils/supabase';
 import {
   tauriUpload,
   tauriDownload,
@@ -60,9 +61,22 @@ export const uploadFile = async (
       }),
     });
 
-    const { uploadUrl, downloadUrl }: { uploadUrl: string; downloadUrl?: string } =
-      await response.json();
-    if (isWebAppPlatform()) {
+    const body = (await response.json()) as {
+      uploadUrl: string;
+      downloadUrl?: string;
+      supabaseSignedUpload?: { bucket: string; path: string; token: string };
+    };
+    const { uploadUrl, downloadUrl, supabaseSignedUpload } = body;
+
+    if (supabaseSignedUpload) {
+      const supabase = createSupabaseClient();
+      const { error } = await supabase.storage
+        .from(supabaseSignedUpload.bucket)
+        .uploadToSignedUrl(supabaseSignedUpload.path, supabaseSignedUpload.token, file);
+      if (error) {
+        throw new Error(error.message);
+      }
+    } else if (isWebAppPlatform()) {
       await webUpload(file, uploadUrl, onProgress);
     } else {
       await tauriUpload(uploadUrl, fileFullPath, 'PUT', onProgress);

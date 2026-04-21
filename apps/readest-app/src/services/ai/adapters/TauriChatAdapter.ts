@@ -24,39 +24,6 @@ interface TauriAdapterOptions {
   currentPage: number;
 }
 
-async function* streamViaApiRoute(
-  messages: Array<{ role: string; content: string }>,
-  systemPrompt: string,
-  settings: AISettings,
-  abortSignal?: AbortSignal,
-): AsyncGenerator<string> {
-  const response = await fetch('/api/ai/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messages,
-      system: systemPrompt,
-      apiKey: settings.aiGatewayApiKey,
-      model: settings.aiGatewayModel || 'google/gemini-2.5-flash-lite',
-    }),
-    signal: abortSignal,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `Chat failed: ${response.status}`);
-  }
-
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    yield decoder.decode(value, { stream: true });
-  }
-}
-
 export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }): AsyncGenerator<ChatModelRunResult> {
@@ -104,32 +71,18 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
       }));
 
       try {
-        const useApiRoute = typeof window !== 'undefined' && settings.provider === 'ai-gateway';
-
         let text = '';
 
-        if (useApiRoute) {
-          for await (const chunk of streamViaApiRoute(
-            aiMessages,
-            systemPrompt,
-            settings,
-            abortSignal,
-          )) {
-            text += chunk;
-            yield { content: [{ type: 'text', text }] };
-          }
-        } else {
-          const result = streamText({
-            model: provider.getModel(),
-            system: systemPrompt,
-            messages: aiMessages,
-            abortSignal,
-          });
+        const result = streamText({
+          model: provider.getModel(),
+          system: systemPrompt,
+          messages: aiMessages,
+          abortSignal,
+        });
 
-          for await (const chunk of result.textStream) {
-            text += chunk;
-            yield { content: [{ type: 'text', text }] };
-          }
+        for await (const chunk of result.textStream) {
+          text += chunk;
+          yield { content: [{ type: 'text', text }] };
         }
 
         aiLogger.chat.complete(text.length);

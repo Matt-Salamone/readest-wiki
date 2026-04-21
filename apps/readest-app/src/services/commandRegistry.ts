@@ -508,7 +508,7 @@ const languagePanelItems = [
   {
     id: 'settings.language.translationProvider',
     labelKey: _('Translation Service'),
-    keywords: ['translation', 'provider', 'google', 'deepl', 'service'],
+    keywords: ['translation', 'provider', 'google', 'azure', 'service'],
     section: 'Translation',
   },
   {
@@ -548,7 +548,7 @@ const aiPanelItems = [
   {
     id: 'settings.ai.provider',
     labelKey: _('AI Provider'),
-    keywords: ['ai', 'provider', 'ollama', 'gateway', 'service'],
+    keywords: ['ai', 'provider', 'ollama', 'local', 'service'],
     section: 'AI',
   },
   {
@@ -562,18 +562,6 @@ const aiPanelItems = [
     labelKey: _('Ollama Model'),
     keywords: ['ollama', 'model', 'llama', 'mistral', 'gemma'],
     section: 'Ollama',
-  },
-  {
-    id: 'settings.ai.gatewayApiKey',
-    labelKey: _('API Key'),
-    keywords: ['api', 'key', 'gateway', 'token', 'secret'],
-    section: 'AI Gateway',
-  },
-  {
-    id: 'settings.ai.gatewayModel',
-    labelKey: _('AI Gateway Model'),
-    keywords: ['gateway', 'model', 'openai', 'gpt', 'claude'],
-    section: 'AI Gateway',
   },
 ];
 
@@ -634,11 +622,6 @@ const actionItems = [
     labelKey: _('About Readest'),
     keywords: ['about', 'readest', 'version', 'info'],
   },
-  {
-    id: 'action.telemetry',
-    labelKey: _('Help improve Readest'),
-    keywords: ['telemetry', 'analytics', 'improve', 'statistics'],
-  },
 ];
 
 export interface CommandRegistryOptions {
@@ -652,7 +635,6 @@ export interface CommandRegistryOptions {
   reloadPage: () => void;
   toggleOpenLastBooks: () => void;
   showAbout: () => void;
-  toggleTelemetry: () => void;
   isDesktop: boolean;
   // TODO: add reader-specific actions when reader is open (tts, bookmark, etc.)
 }
@@ -800,13 +782,6 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
     createActionItem({
       id: 'action.about',
       action: options.showAbout,
-    }),
-  );
-
-  items.push(
-    createActionItem({
-      id: 'action.telemetry',
-      action: options.toggleTelemetry,
     }),
   );
 

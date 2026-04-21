@@ -12,6 +12,8 @@ export interface WikiMarkdownProps {
   markdown: string;
   pagesBySlug: Map<string, WikiPage>;
   onWikiPageNavigate: (pageId: string) => void;
+  /** When set, unresolved [[links]] become clickable (revive soft-deleted / create ghost, then navigate). */
+  onCreateGhostForTitle?: (rawTitle: string) => void | Promise<void>;
   className?: string;
 }
 
@@ -19,6 +21,7 @@ const WikiMarkdown: React.FC<WikiMarkdownProps> = ({
   markdown,
   pagesBySlug,
   onWikiPageNavigate,
+  onCreateGhostForTitle,
   className,
 }) => {
   const processed = useMemo(() => preprocessWikiBracketLinks(markdown || ''), [markdown]);
@@ -35,6 +38,21 @@ const WikiMarkdown: React.FC<WikiMarkdownProps> = ({
               const slug = wikiTitleToSlug(raw);
               const target = pagesBySlug.get(slug);
               if (!target) {
+                if (onCreateGhostForTitle) {
+                  return (
+                    <button
+                      type='button'
+                      className={clsx(
+                        'link link-hover inline bg-transparent p-0 text-left font-medium underline',
+                        'text-base-content/50',
+                        className,
+                      )}
+                      onClick={() => void onCreateGhostForTitle(raw)}
+                    >
+                      {children}
+                    </button>
+                  );
+                }
                 return <span className={clsx('text-base-content/40', className)}>{children}</span>;
               }
               const isGhost = target.isGhost === 1;

@@ -5,7 +5,7 @@ import React from 'react';
 import WikiPageEditor from '@/app/reader/components/wiki/WikiPageEditor';
 import WikiBacklinks from '@/app/wiki/components/WikiBacklinks';
 import { WikiStore } from '@/services/wiki';
-import type { WikiBlock, WikiPage, WikiTag } from '@/types/wiki';
+import type { SpoilerContext, WikiBlock, WikiPage, WikiTag } from '@/types/wiki';
 
 interface WikiPageViewProps {
   namespaceId: string;
@@ -16,6 +16,7 @@ interface WikiPageViewProps {
   tagsById: Record<string, WikiTag>;
   onReload: () => Promise<void>;
   onSelectPage: (pageId: string | null) => void;
+  spoilerCtx?: SpoilerContext | null;
 }
 
 const WikiPageView: React.FC<WikiPageViewProps> = ({
@@ -27,6 +28,7 @@ const WikiPageView: React.FC<WikiPageViewProps> = ({
   tagsById,
   onReload,
   onSelectPage,
+  spoilerCtx,
 }) => {
   return (
     <div className='flex min-h-0 min-w-0 flex-1 flex-col'>
@@ -40,6 +42,7 @@ const WikiPageView: React.FC<WikiPageViewProps> = ({
         tagsById={tagsById}
         onReload={onReload}
         onSelectPage={onSelectPage}
+        spoilerCtx={spoilerCtx}
       />
       {pageId ? (
         <WikiBacklinks wiki={wiki} targetPageId={pageId} onOpenSourcePage={onSelectPage} />

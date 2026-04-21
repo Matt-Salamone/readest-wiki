@@ -43,7 +43,7 @@ describe('wiki schema migration', () => {
     ]);
 
     const uv = await db.select<{ user_version: number }>('PRAGMA user_version');
-    expect(uv[0]?.user_version).toBe(2);
+    expect(uv[0]?.user_version).toBe(3);
   });
 
   it('is idempotent on second migrate()', async () => {
@@ -51,6 +51,6 @@ describe('wiki schema migration', () => {
     await migrate(db, getMigrations('wiki'));
 
     const uv = await db.select<{ user_version: number }>('PRAGMA user_version');
-    expect(uv[0]?.user_version).toBe(2);
+    expect(uv[0]?.user_version).toBe(3);
   });
 });

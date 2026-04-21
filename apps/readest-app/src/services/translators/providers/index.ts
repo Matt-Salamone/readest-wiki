@@ -1,5 +1,4 @@
 import { TranslationProvider } from '../types';
-import { deeplProvider } from './deepl';
 import { azureProvider } from './azure';
 import { googleProvider } from './google';
 import { yandexProvider } from './yandex';
@@ -16,13 +15,11 @@ function createTranslator<T extends string>(
   return implementation as TranslationProvider & { name: T };
 }
 
-const deeplTranslator = createTranslator('deepl', deeplProvider);
 const azureTranslator = createTranslator('azure', azureProvider);
 const googleTranslator = createTranslator('google', googleProvider);
 const yandexTranslator = createTranslator('yandex', yandexProvider);
 
 const availableTranslators = [
-  deeplTranslator,
   azureTranslator,
   googleTranslator,
   yandexTranslator,
@@ -64,6 +61,15 @@ export const isTranslatorAvailable = (
  * reason is added. The `_` translation function is passed in so this module
  * stays free of React imports.
  */
+/** Maps removed or unknown provider ids (e.g. legacy `deepl`) to a valid translator. */
+export const normalizeTranslatorName = (name: string | undefined | null): TranslatorName => {
+  const valid = new Set(availableTranslators.map((t) => t.name));
+  if (name && valid.has(name as TranslatorName)) {
+    return name as TranslatorName;
+  }
+  return 'google';
+};
+
 export const getTranslatorDisplayLabel = (
   translator: TranslationProvider,
   hasToken: boolean,

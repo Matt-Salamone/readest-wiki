@@ -27,7 +27,8 @@ export interface TranslationCache {
 }
 
 export interface UseTranslatorOptions {
-  provider?: TranslatorName;
+  /** May be a legacy id from saved settings; use `normalizeTranslatorName` in `useTranslator`. */
+  provider?: TranslatorName | string;
   sourceLang?: string;
   targetLang?: string;
   enablePolishing?: boolean;
@@ -36,7 +37,7 @@ export interface UseTranslatorOptions {
 
 export const ErrorCodes = {
   UNAUTHORIZED: 'Unauthorized',
-  DEEPL_API_ERROR: 'DeepL API Error',
+  TRANSLATION_API_ERROR: 'Translation API Error',
   DAILY_QUOTA_EXCEEDED: 'Daily Quota Exceeded',
   INTERNAL_SERVER_ERROR: 'Internal Server Error',
 };

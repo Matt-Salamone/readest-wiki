@@ -64,6 +64,12 @@ describe('validateBackupStructure', () => {
     entries.push('library.json');
     expect(validateBackupStructure(entries)).toBe(true);
   });
+
+  it('should return true when library.json exists with optional data/wiki.db (Phase 6 backup)', () => {
+    expect(validateBackupStructure(['library.json', 'data/wiki.db', 'data/wiki.db-wal'])).toBe(
+      true,
+    );
+  });
 });
 
 describe('mergeBookConfigs - extended', () => {

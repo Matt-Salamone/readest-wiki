@@ -99,6 +99,7 @@ interface BookshelfItemProps {
   handleBookDelete: (book: Book, syncBooks?: boolean) => Promise<boolean>;
   handleSetSelectMode: (selectMode: boolean) => void;
   handleShowDetailsBook: (book: Book) => void;
+  handleOpenLibraryWikiNote?: (book: Book) => void;
   handleLibraryNavigation: (targetGroup: string) => void;
   handleUpdateReadingStatus: (book: Book, status: ReadingStatus | undefined) => void;
 }
@@ -117,6 +118,7 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
   handleBookDownload,
   handleSetSelectMode,
   handleShowDetailsBook,
+  handleOpenLibraryWikiNote,
   handleLibraryNavigation,
   handleUpdateReadingStatus,
 }) => {
@@ -240,6 +242,14 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
         showBookDetailsModal(book);
       },
     });
+    const addWikiNoteMenuItem = handleOpenLibraryWikiNote
+      ? await MenuItem.new({
+          text: _('Add wiki note'),
+          action: async () => {
+            handleOpenLibraryWikiNote(book);
+          },
+        })
+      : null;
     const downloadBookMenuItem = await MenuItem.new({
       text: _('Download Book'),
       action: async () => {
@@ -271,6 +281,9 @@ const BookshelfItem: React.FC<BookshelfItemProps> = ({
       menu.append(clearStatusMenuItem);
     }
     menu.append(showBookDetailsMenuItem);
+    if (addWikiNoteMenuItem) {
+      menu.append(addWikiNoteMenuItem);
+    }
     menu.append(showBookInFinderMenuItem);
     if (book.uploadedAt && !book.downloadedAt) {
       menu.append(downloadBookMenuItem);

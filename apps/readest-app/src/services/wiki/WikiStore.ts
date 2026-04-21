@@ -1,16 +1,21 @@
 import type { Book } from '@/types/book';
 import type {
+  SpoilerOverride,
   WikiBlock,
+  WikiExportV1,
   WikiLink,
   WikiNamespace,
   WikiNamespaceKind,
   WikiPage,
   WikiPageType,
   WikiSectionCatalogEntry,
+  WikiSyncLocalPayload,
   WikiTag,
 } from '@/types/wiki';
 import type { AppService } from '@/types/system';
+import { runOnWikiDb } from '@/store/wikiStore';
 import { md5Fingerprint } from '@/utils/md5';
+import { getAppVersion } from '@/utils/version';
 
 const DB_SCHEMA = 'wiki';
 const DB_PATH = 'wiki.db';
@@ -56,6 +61,7 @@ type WikiNamespaceRow = {
   kind: string;
   title: string;
   imported_mode: number;
+  spoiler_override: string | null;
   book_hashes_json: string;
   created_at: number;
   updated_at: number;
@@ -96,12 +102,16 @@ type WikiTagRow = {
   namespace_id: string;
   tag_name: string;
   built_in_type: string | null;
+  updated_at: number;
+  deleted_at: number | null;
 };
 
 type WikiLinkRow = {
   source_page_id: string;
   target_page_id: string;
   source_block_id: string;
+  updated_at: number;
+  deleted_at: number | null;
 };
 
 type WikiSectionCatalogRow = {
@@ -109,7 +119,14 @@ type WikiSectionCatalogRow = {
   name: string;
   sort_order: number;
   created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
 };
+
+function parseSpoilerOverride(raw: string | null | undefined): SpoilerOverride {
+  if (raw === 'on' || raw === 'off') return raw;
+  return null;
+}
 
 function rowToNamespace(row: WikiNamespaceRow): WikiNamespace {
   let bookHashes: string[] = [];
@@ -126,6 +143,7 @@ function rowToNamespace(row: WikiNamespaceRow): WikiNamespace {
     kind: row.kind as WikiNamespaceKind,
     title: row.title,
     importedMode: (row.imported_mode ? 1 : 0) as 0 | 1,
+    spoilerOverride: parseSpoilerOverride(row.spoiler_override),
     bookHashes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -181,6 +199,8 @@ function rowToTag(row: WikiTagRow): WikiTag {
     namespaceId: row.namespace_id,
     tagName: row.tag_name,
     builtInType: (row.built_in_type as WikiPageType | null) ?? null,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   };
 }
 
@@ -189,6 +209,8 @@ function rowToLink(row: WikiLinkRow): WikiLink {
     sourcePageId: row.source_page_id,
     targetPageId: row.target_page_id,
     sourceBlockId: row.source_block_id === '' ? null : row.source_block_id,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   };
 }
 
@@ -198,11 +220,17 @@ function rowToSectionCatalog(row: WikiSectionCatalogRow): WikiSectionCatalogEntr
     name: row.name,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   };
 }
 
 function linkKeyBlockId(sourceBlockId: string | null): string {
   return sourceBlockId ?? '';
+}
+
+function rowVersionMs(updated: number, deletedAt: number | null | undefined): number {
+  return Math.max(updated, deletedAt ?? 0);
 }
 
 function parseBookHashesJson(json: string): string[] {
@@ -225,12 +253,14 @@ export class WikiStore {
   }
 
   private async withDb<T>(fn: (db: Awaited<ReturnType<AppService['openDatabase']>>) => Promise<T>) {
-    const db = await this.appService.openDatabase(DB_SCHEMA, DB_PATH, 'Data');
-    try {
-      return await fn(db);
-    } finally {
-      await db.close();
-    }
+    return runOnWikiDb(async () => {
+      const db = await this.appService.openDatabase(DB_SCHEMA, DB_PATH, 'Data');
+      try {
+        return await fn(db);
+      } finally {
+        await db.close();
+      }
+    });
   }
 
   async resolveNamespaceForBook(book: Book): Promise<WikiNamespace> {
@@ -254,7 +284,7 @@ export class WikiStore {
 
     return this.withDb(async (db) => {
       const existing = await db.select<WikiNamespaceRow>(
-        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
          FROM wiki_namespaces WHERE id = ?`,
         [id],
       );
@@ -262,12 +292,12 @@ export class WikiStore {
       if (existing.length === 0) {
         const bookHashes = [book.hash];
         await db.execute(
-          `INSERT INTO wiki_namespaces (id, kind, title, imported_mode, book_hashes_json, created_at, updated_at)
-           VALUES (?, ?, ?, 0, ?, ?, ?)`,
+          `INSERT INTO wiki_namespaces (id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at)
+           VALUES (?, ?, ?, 0, NULL, ?, ?, ?)`,
           [id, kind, title, JSON.stringify(bookHashes), now, now],
         );
         const rows = await db.select<WikiNamespaceRow>(
-          `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+          `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
            FROM wiki_namespaces WHERE id = ?`,
           [id],
         );
@@ -293,7 +323,7 @@ export class WikiStore {
       }
 
       const rows = await db.select<WikiNamespaceRow>(
-        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
          FROM wiki_namespaces WHERE id = ?`,
         [id],
       );
@@ -322,7 +352,7 @@ export class WikiStore {
 
     return this.withDb(async (db) => {
       const oldRows = await db.select<WikiNamespaceRow>(
-        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
          FROM wiki_namespaces WHERE id = ?`,
         [oldId],
       );
@@ -331,7 +361,7 @@ export class WikiStore {
       }
 
       const newRows = await db.select<WikiNamespaceRow>(
-        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
          FROM wiki_namespaces WHERE id = ?`,
         [newId],
       );
@@ -375,7 +405,7 @@ export class WikiStore {
   async getNamespace(namespaceId: string): Promise<WikiNamespace | null> {
     return this.withDb(async (db) => {
       const rows = await db.select<WikiNamespaceRow>(
-        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
          FROM wiki_namespaces WHERE id = ?`,
         [namespaceId],
       );
@@ -386,7 +416,7 @@ export class WikiStore {
   async listAllNamespaces(): Promise<WikiNamespace[]> {
     return this.withDb(async (db) => {
       const rows = await db.select<WikiNamespaceRow>(
-        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at
          FROM wiki_namespaces ORDER BY title COLLATE NOCASE ASC`,
       );
       return rows.map(rowToNamespace);
@@ -459,6 +489,7 @@ export class WikiStore {
           AND l.source_block_id != ''
           AND sb.deleted_at IS NULL
         WHERE l.target_page_id = ?
+          AND l.deleted_at IS NULL
           AND (l.source_block_id = '' OR sb.id IS NOT NULL)`,
         [targetPageId],
       );
@@ -788,13 +819,17 @@ export class WikiStore {
     builtInType?: WikiPageType | null;
   }): Promise<WikiTag> {
     const id = crypto.randomUUID();
+    const now = Date.now();
 
     return this.withDb(async (db) => {
       await db.execute(
-        `INSERT INTO wiki_tags (id, namespace_id, tag_name, built_in_type)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(namespace_id, tag_name) DO UPDATE SET built_in_type = COALESCE(excluded.built_in_type, wiki_tags.built_in_type)`,
-        [id, input.namespaceId, input.tagName.trim(), input.builtInType ?? null],
+        `INSERT INTO wiki_tags (id, namespace_id, tag_name, built_in_type, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(namespace_id, tag_name) DO UPDATE SET
+           built_in_type = COALESCE(excluded.built_in_type, wiki_tags.built_in_type),
+           updated_at = excluded.updated_at,
+           deleted_at = NULL`,
+        [id, input.namespaceId, input.tagName.trim(), input.builtInType ?? null, now],
       );
       const rows = await db.select<WikiTagRow>(
         `SELECT * FROM wiki_tags WHERE namespace_id = ? AND tag_name = ?`,
@@ -807,7 +842,7 @@ export class WikiStore {
   async listTags(namespaceId: string): Promise<WikiTag[]> {
     return this.withDb(async (db) => {
       const rows = await db.select<WikiTagRow>(
-        `SELECT * FROM wiki_tags WHERE namespace_id = ? ORDER BY tag_name COLLATE NOCASE`,
+        `SELECT * FROM wiki_tags WHERE namespace_id = ? AND deleted_at IS NULL ORDER BY tag_name COLLATE NOCASE`,
         [namespaceId],
       );
       return rows.map(rowToTag);
@@ -820,7 +855,8 @@ export class WikiStore {
   async listSectionCatalog(): Promise<WikiSectionCatalogEntry[]> {
     return this.withDb(async (db) => {
       const rows = await db.select<WikiSectionCatalogRow>(
-        `SELECT id, name, sort_order, created_at FROM wiki_section_catalog
+        `SELECT id, name, sort_order, created_at, updated_at, deleted_at FROM wiki_section_catalog
+         WHERE deleted_at IS NULL
          ORDER BY sort_order ASC, name COLLATE NOCASE ASC`,
       );
       return rows.map(rowToSectionCatalog);
@@ -851,8 +887,8 @@ export class WikiStore {
       const now = Date.now();
       const id = crypto.randomUUID();
       await db.execute(
-        `INSERT INTO wiki_section_catalog (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)`,
-        [id, trimmed, nextOrder, now],
+        `INSERT INTO wiki_section_catalog (id, name, sort_order, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)`,
+        [id, trimmed, nextOrder, now, now],
       );
       return trimmed;
     });
@@ -872,10 +908,17 @@ export class WikiStore {
     });
   }
 
+  /**
+   * Ensure a page exists for a [[link]] title: use live row, revive a soft-deleted row, or create a ghost.
+   */
+  async reviveGhostForTitle(namespaceId: string, title: string): Promise<WikiPage> {
+    return this.withDb(async (db) => this.ensureTargetPageForWikiLink(db, namespaceId, title));
+  }
+
   async listLinksToTarget(targetPageId: string): Promise<WikiLink[]> {
     return this.withDb(async (db) => {
       const rows = await db.select<WikiLinkRow>(
-        `SELECT source_page_id, target_page_id, source_block_id FROM wiki_links WHERE target_page_id = ?`,
+        `SELECT source_page_id, target_page_id, source_block_id, updated_at, deleted_at FROM wiki_links WHERE target_page_id = ? AND deleted_at IS NULL`,
         [targetPageId],
       );
       return rows.map(rowToLink);
@@ -982,6 +1025,589 @@ export class WikiStore {
     });
   }
 
+  async setNamespaceSpoilerOverride(namespaceId: string, override: SpoilerOverride): Promise<void> {
+    const now = Date.now();
+    return this.withDb(async (db) => {
+      await db.execute(
+        `UPDATE wiki_namespaces SET spoiler_override = ?, updated_at = ? WHERE id = ?`,
+        [override === null ? null : override, now, namespaceId],
+      );
+    });
+  }
+
+  async setImportedMode(namespaceId: string, mode: 0 | 1): Promise<void> {
+    const now = Date.now();
+    return this.withDb(async (db) => {
+      await db.execute(
+        `UPDATE wiki_namespaces SET imported_mode = ?, updated_at = ? WHERE id = ?`,
+        [mode, now, namespaceId],
+      );
+    });
+  }
+
+  /** Best-effort: drain queued wiki DB work (each `withDb` open/close is immediate). */
+  async closeDb(): Promise<void> {
+    await runOnWikiDb(async () => {
+      /* no-op */
+    });
+  }
+
+  /**
+   * Rows in the namespace (and global section catalog) changed since `since` (ms), for sync push.
+   */
+  async listChangesForNamespace(namespaceId: string, since: number): Promise<WikiSyncLocalPayload> {
+    return this.withDb(async (db) => {
+      const namespaces: WikiNamespace[] = [];
+      const nsRows = await db.select<WikiNamespaceRow>(
+        `SELECT * FROM wiki_namespaces WHERE id = ? AND updated_at > ?`,
+        [namespaceId, since],
+      );
+      if (nsRows[0]) namespaces.push(rowToNamespace(nsRows[0]));
+
+      const pageRows = await db.select<WikiPageRow>(
+        `SELECT * FROM wiki_pages WHERE namespace_id = ? AND (updated_at > ? OR (deleted_at IS NOT NULL AND deleted_at > ?))`,
+        [namespaceId, since, since],
+      );
+      const pages = pageRows.map(rowToPage);
+
+      const blockRows = await db.select<WikiBlockRow>(
+        `SELECT b.* FROM wiki_blocks b
+         INNER JOIN wiki_pages p ON p.id = b.page_id
+         WHERE p.namespace_id = ? AND (b.updated_at > ? OR (b.deleted_at IS NOT NULL AND b.deleted_at > ?))`,
+        [namespaceId, since, since],
+      );
+      const blocks = blockRows.map(rowToBlock);
+
+      const tagRows = await db.select<WikiTagRow>(
+        `SELECT * FROM wiki_tags WHERE namespace_id = ? AND (updated_at > ? OR (deleted_at IS NOT NULL AND deleted_at > ?))`,
+        [namespaceId, since, since],
+      );
+      const tags = tagRows.map(rowToTag);
+
+      const linkRows = await db.select<WikiLinkRow>(
+        `SELECT l.* FROM wiki_links l
+         INNER JOIN wiki_pages sp ON sp.id = l.source_page_id
+         WHERE sp.namespace_id = ? AND (l.updated_at > ? OR (l.deleted_at IS NOT NULL AND l.deleted_at > ?))`,
+        [namespaceId, since, since],
+      );
+      const links = linkRows.map(rowToLink);
+
+      const catRows = await db.select<WikiSectionCatalogRow>(
+        `SELECT * FROM wiki_section_catalog WHERE updated_at > ? OR (deleted_at IS NOT NULL AND deleted_at > ?)`,
+        [since, since],
+      );
+      const sectionCatalog = catRows.map(rowToSectionCatalog);
+
+      return {
+        namespaces,
+        pages,
+        blocks,
+        tags,
+        links,
+        sectionCatalog,
+      };
+    });
+  }
+
+  /**
+   * Apply server/other-device rows with last-writer-wins; union `book_hashes_json` for namespaces.
+   * Does not overwrite `spoiler_override` (device-local).
+   */
+  async mergePulledRows(payload: WikiSyncLocalPayload): Promise<void> {
+    return this.withDb(async (db) => {
+      await db.execute('BEGIN IMMEDIATE');
+      try {
+        for (const n of payload.namespaces) {
+          const cur = await db.select<WikiNamespaceRow>(
+            `SELECT * FROM wiki_namespaces WHERE id = ?`,
+            [n.id],
+          );
+          const mergedHashes = [
+            ...new Set([
+              ...(cur[0] ? parseBookHashesJson(cur[0].book_hashes_json) : []),
+              ...n.bookHashes,
+            ]),
+          ];
+          const mergedJson = JSON.stringify(mergedHashes);
+          if (!cur[0]) {
+            await db.execute(
+              `INSERT INTO wiki_namespaces (id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at)
+               VALUES (?, ?, ?, ?, NULL, ?, ?, ?)`,
+              [n.id, n.kind, n.title, n.importedMode, mergedJson, n.createdAt, n.updatedAt],
+            );
+          } else if (n.updatedAt > cur[0].updated_at) {
+            await db.execute(
+              `UPDATE wiki_namespaces SET kind = ?, title = ?, imported_mode = ?, book_hashes_json = ?, updated_at = ? WHERE id = ?`,
+              [n.kind, n.title, n.importedMode, mergedJson, n.updatedAt, n.id],
+            );
+          } else {
+            await db.execute(
+              `UPDATE wiki_namespaces SET book_hashes_json = ?, updated_at = ? WHERE id = ?`,
+              [mergedJson, Math.max(cur[0].updated_at, n.updatedAt), n.id],
+            );
+          }
+        }
+
+        for (const p of payload.pages) {
+          const cur = await db.select<WikiPageRow>(`SELECT * FROM wiki_pages WHERE id = ?`, [p.id]);
+          const localV = cur[0] ? rowVersionMs(cur[0].updated_at, cur[0].deleted_at) : -1;
+          const remoteV = rowVersionMs(p.updatedAt, p.deletedAt);
+          if (!cur[0] || remoteV > localV) {
+            await db.execute(
+              `INSERT INTO wiki_pages (
+                id, namespace_id, title, title_slug, page_type, summary_markdown,
+                first_seen_cfi, first_seen_book_hash, is_ghost, created_at, updated_at, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                namespace_id = excluded.namespace_id,
+                title = excluded.title,
+                title_slug = excluded.title_slug,
+                page_type = excluded.page_type,
+                summary_markdown = excluded.summary_markdown,
+                first_seen_cfi = excluded.first_seen_cfi,
+                first_seen_book_hash = excluded.first_seen_book_hash,
+                is_ghost = excluded.is_ghost,
+                created_at = excluded.created_at,
+                updated_at = excluded.updated_at,
+                deleted_at = excluded.deleted_at`,
+              [
+                p.id,
+                p.namespaceId,
+                p.title,
+                p.titleSlug,
+                p.pageType,
+                p.summaryMarkdown,
+                p.firstSeenCfi,
+                p.firstSeenBookHash,
+                p.isGhost,
+                p.createdAt,
+                p.updatedAt,
+                p.deletedAt,
+              ],
+            );
+          }
+        }
+
+        for (const b of payload.blocks) {
+          const cur = await db.select<WikiBlockRow>(`SELECT * FROM wiki_blocks WHERE id = ?`, [
+            b.id,
+          ]);
+          const localV = cur[0] ? rowVersionMs(cur[0].updated_at, cur[0].deleted_at) : -1;
+          const remoteV = rowVersionMs(b.updatedAt, b.deletedAt);
+          if (!cur[0] || remoteV > localV) {
+            await db.execute(
+              `INSERT INTO wiki_blocks (
+                id, page_id, book_hash, cfi, xpointer0, xpointer1, quote_text, note_markdown,
+                tags_json, created_at, updated_at, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                page_id = excluded.page_id,
+                book_hash = excluded.book_hash,
+                cfi = excluded.cfi,
+                xpointer0 = excluded.xpointer0,
+                xpointer1 = excluded.xpointer1,
+                quote_text = excluded.quote_text,
+                note_markdown = excluded.note_markdown,
+                tags_json = excluded.tags_json,
+                created_at = excluded.created_at,
+                updated_at = excluded.updated_at,
+                deleted_at = excluded.deleted_at`,
+              [
+                b.id,
+                b.pageId,
+                b.bookHash,
+                b.cfi,
+                b.xpointer0,
+                b.xpointer1,
+                b.quoteText,
+                b.noteMarkdown,
+                JSON.stringify(b.tagIds ?? []),
+                b.createdAt,
+                b.updatedAt,
+                b.deletedAt,
+              ],
+            );
+          }
+        }
+
+        for (const t of payload.tags) {
+          const cur = await db.select<WikiTagRow>(`SELECT * FROM wiki_tags WHERE id = ?`, [t.id]);
+          const localV = cur[0] ? rowVersionMs(cur[0].updated_at, cur[0].deleted_at) : -1;
+          const remoteV = rowVersionMs(t.updatedAt ?? 0, t.deletedAt);
+          if (!cur[0] || remoteV > localV) {
+            await db.execute(
+              `INSERT INTO wiki_tags (id, namespace_id, tag_name, built_in_type, updated_at, deleted_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 namespace_id = excluded.namespace_id,
+                 tag_name = excluded.tag_name,
+                 built_in_type = excluded.built_in_type,
+                 updated_at = excluded.updated_at,
+                 deleted_at = excluded.deleted_at`,
+              [
+                t.id,
+                t.namespaceId,
+                t.tagName,
+                t.builtInType,
+                t.updatedAt ?? Date.now(),
+                t.deletedAt ?? null,
+              ],
+            );
+          }
+        }
+
+        for (const l of payload.links) {
+          const sid = l.sourceBlockId ?? '';
+          const cur = await db.select<WikiLinkRow>(
+            `SELECT * FROM wiki_links WHERE source_page_id = ? AND target_page_id = ? AND source_block_id = ?`,
+            [l.sourcePageId, l.targetPageId, sid],
+          );
+          const localV = cur[0] ? rowVersionMs(cur[0].updated_at, cur[0].deleted_at) : -1;
+          const remoteV = rowVersionMs(l.updatedAt ?? 0, l.deletedAt);
+          if (!cur[0] || remoteV > localV) {
+            await db.execute(
+              `INSERT INTO wiki_links (source_page_id, target_page_id, source_block_id, updated_at, deleted_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(source_page_id, target_page_id, source_block_id) DO UPDATE SET
+                 updated_at = excluded.updated_at,
+                 deleted_at = excluded.deleted_at`,
+              [l.sourcePageId, l.targetPageId, sid, l.updatedAt ?? Date.now(), l.deletedAt ?? null],
+            );
+          }
+        }
+
+        for (const s of payload.sectionCatalog) {
+          const cur = await db.select<WikiSectionCatalogRow>(
+            `SELECT * FROM wiki_section_catalog WHERE id = ?`,
+            [s.id],
+          );
+          const localV = cur[0] ? rowVersionMs(cur[0].updated_at, cur[0].deleted_at) : -1;
+          const remoteV = rowVersionMs(s.updatedAt ?? 0, s.deletedAt);
+          if (!cur[0] || remoteV > localV) {
+            await db.execute(
+              `INSERT INTO wiki_section_catalog (id, name, sort_order, created_at, updated_at, deleted_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 name = excluded.name,
+                 sort_order = excluded.sort_order,
+                 created_at = excluded.created_at,
+                 updated_at = excluded.updated_at,
+                 deleted_at = excluded.deleted_at`,
+              [
+                s.id,
+                s.name,
+                s.sortOrder,
+                s.createdAt,
+                s.updatedAt ?? Date.now(),
+                s.deletedAt ?? null,
+              ],
+            );
+          }
+        }
+
+        await db.execute('COMMIT');
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        throw e;
+      }
+    });
+  }
+
+  async exportNamespace(namespaceId: string): Promise<WikiExportV1> {
+    return this.withDb(async (db) => {
+      const nsRows = await db.select<WikiNamespaceRow>(
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at FROM wiki_namespaces WHERE id = ?`,
+        [namespaceId],
+      );
+      if (!nsRows[0]) {
+        throw new Error('Wiki namespace not found');
+      }
+      const ns = rowToNamespace(nsRows[0]);
+      const pageRows = await db.select<WikiPageRow>(
+        `SELECT * FROM wiki_pages WHERE namespace_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
+        [namespaceId],
+      );
+      const tagRows = await db.select<WikiTagRow>(
+        `SELECT * FROM wiki_tags WHERE namespace_id = ? AND deleted_at IS NULL ORDER BY tag_name COLLATE NOCASE ASC`,
+        [namespaceId],
+      );
+
+      const pageIds = pageRows.map((p) => p.id);
+      let blockRows: WikiBlockRow[] = [];
+      if (pageIds.length > 0) {
+        const ph = pageIds.map(() => '?').join(',');
+        blockRows = await db.select<WikiBlockRow>(
+          `SELECT * FROM wiki_blocks WHERE page_id IN (${ph}) AND deleted_at IS NULL ORDER BY created_at ASC`,
+          pageIds,
+        );
+      }
+
+      const linkRows = await db.select<WikiLinkRow>(
+        `SELECT l.source_page_id, l.target_page_id, l.source_block_id, l.updated_at, l.deleted_at
+         FROM wiki_links l
+         INNER JOIN wiki_pages sp ON sp.id = l.source_page_id AND sp.namespace_id = ? AND sp.deleted_at IS NULL
+         WHERE l.deleted_at IS NULL`,
+        [namespaceId],
+      );
+
+      const tagNames = new Set(tagRows.map((t) => t.tag_name));
+      let sectionCatalog: { name: string; sortOrder: number }[] = [];
+      if (tagNames.size > 0) {
+        const names = [...tagNames];
+        const ph = names.map(() => '?').join(',');
+        const catRows = await db.select<WikiSectionCatalogRow>(
+          `SELECT * FROM wiki_section_catalog WHERE name IN (${ph})`,
+          names,
+        );
+        sectionCatalog = catRows.map((r) => ({ name: r.name, sortOrder: r.sort_order }));
+      }
+
+      return {
+        format: 'readest.wiki',
+        version: 1,
+        exportedAt: Date.now(),
+        appVersion: getAppVersion(),
+        namespace: {
+          title: ns.title,
+          kind: ns.kind,
+          bookHashes: ns.bookHashes,
+        },
+        pages: pageRows.map(rowToPage),
+        blocks: blockRows.map(rowToBlock),
+        tags: tagRows.map(rowToTag),
+        links: linkRows.map(rowToLink),
+        sectionCatalog,
+      };
+    });
+  }
+
+  async importNamespace(
+    data: WikiExportV1,
+    opts: { mergeIntoNamespaceId?: string } = {},
+  ): Promise<WikiNamespace> {
+    if (data.format !== 'readest.wiki' || data.version !== 1) {
+      throw new Error('Invalid wiki export file');
+    }
+
+    return this.withDb(async (db) => {
+      let targetId = '';
+      await db.execute('BEGIN IMMEDIATE');
+      try {
+        if (opts.mergeIntoNamespaceId) {
+          const exists = await db.select<WikiNamespaceRow>(
+            `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at FROM wiki_namespaces WHERE id = ?`,
+            [opts.mergeIntoNamespaceId],
+          );
+          if (!exists[0]) {
+            throw new Error('Target wiki namespace not found');
+          }
+          targetId = opts.mergeIntoNamespaceId;
+        } else {
+          targetId = `imported:${crypto.randomUUID()}`;
+          const now = Date.now();
+          const bookHashesJson = JSON.stringify(data.namespace.bookHashes ?? []);
+          await db.execute(
+            `INSERT INTO wiki_namespaces (id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at)
+             VALUES (?, ?, ?, 1, NULL, ?, ?, ?)`,
+            [targetId, data.namespace.kind, data.namespace.title, bookHashesJson, now, now],
+          );
+        }
+
+        const now = Date.now();
+        for (const sc of data.sectionCatalog ?? []) {
+          const trimmed = sc.name.trim();
+          if (!trimmed) continue;
+          const existing = await db.select<{ name: string }>(
+            `SELECT name FROM wiki_section_catalog WHERE lower(name) = lower(?)`,
+            [trimmed],
+          );
+          if (existing.length > 0) continue;
+          const maxRows = await db.select<{ m: number | null }>(
+            `SELECT MAX(sort_order) AS m FROM wiki_section_catalog`,
+          );
+          const nextOrder = sc.sortOrder ?? (maxRows[0]?.m ?? -1) + 1;
+          await db.execute(
+            `INSERT INTO wiki_section_catalog (id, name, sort_order, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)`,
+            [crypto.randomUUID(), trimmed, nextOrder, now, now],
+          );
+        }
+
+        const pageIdMap = new Map<string, string>();
+        for (const p of data.pages) {
+          const base = p.title.trim();
+          let title = base;
+          let slug = wikiTitleToSlug(title);
+          for (let attempt = 0; attempt < 80; attempt++) {
+            const clash = await db.select<{ id: string }>(
+              `SELECT id FROM wiki_pages WHERE namespace_id = ? AND title_slug = ? AND deleted_at IS NULL`,
+              [targetId, slug],
+            );
+            if (!clash.length) break;
+            title = attempt === 0 ? `${base} (imported)` : `${base} (imported) ${attempt + 1}`;
+            slug = wikiTitleToSlug(title);
+          }
+
+          const newId = crypto.randomUUID();
+          pageIdMap.set(p.id, newId);
+          await db.execute(
+            `INSERT INTO wiki_pages (
+              id, namespace_id, title, title_slug, page_type, summary_markdown,
+              first_seen_cfi, first_seen_book_hash, is_ghost, created_at, updated_at, deleted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              newId,
+              targetId,
+              title,
+              slug,
+              p.pageType ?? null,
+              p.summaryMarkdown ?? '',
+              p.firstSeenCfi ?? null,
+              p.firstSeenBookHash ?? null,
+              p.isGhost ?? 0,
+              p.createdAt,
+              p.updatedAt,
+              p.deletedAt ?? null,
+            ],
+          );
+        }
+
+        const tagIdMap = new Map<string, string>();
+        for (const t of data.tags) {
+          const existing = await db.select<WikiTagRow>(
+            `SELECT * FROM wiki_tags WHERE namespace_id = ? AND lower(tag_name) = lower(?)`,
+            [targetId, t.tagName],
+          );
+          if (existing[0]) {
+            tagIdMap.set(t.id, existing[0].id);
+          } else {
+            const newTid = crypto.randomUUID();
+            tagIdMap.set(t.id, newTid);
+            await db.execute(
+              `INSERT INTO wiki_tags (id, namespace_id, tag_name, built_in_type, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)`,
+              [newTid, targetId, t.tagName, t.builtInType ?? null, now],
+            );
+          }
+        }
+
+        const blockIdMap = new Map<string, string>();
+        for (const b of data.blocks) {
+          const newPageId = pageIdMap.get(b.pageId);
+          if (!newPageId) {
+            console.warn('Skipping wiki block: page not in export', b.pageId);
+            continue;
+          }
+          const newBid = crypto.randomUUID();
+          blockIdMap.set(b.id, newBid);
+          const tagIds = (b.tagIds ?? [])
+            .map((tid) => tagIdMap.get(tid))
+            .filter((x): x is string => Boolean(x));
+          await db.execute(
+            `INSERT INTO wiki_blocks (
+              id, page_id, book_hash, cfi, xpointer0, xpointer1, quote_text, note_markdown,
+              tags_json, created_at, updated_at, deleted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              newBid,
+              newPageId,
+              b.bookHash,
+              b.cfi,
+              b.xpointer0 ?? null,
+              b.xpointer1 ?? null,
+              b.quoteText ?? null,
+              b.noteMarkdown ?? null,
+              JSON.stringify(tagIds),
+              b.createdAt,
+              b.updatedAt,
+              b.deletedAt ?? null,
+            ],
+          );
+        }
+
+        for (const l of data.links) {
+          const sp = pageIdMap.get(l.sourcePageId);
+          const tp = pageIdMap.get(l.targetPageId);
+          if (!sp || !tp) {
+            console.warn('Skipping wiki link: missing page mapping', l);
+            continue;
+          }
+          let blockKey = '';
+          if (l.sourceBlockId) {
+            const nb = blockIdMap.get(l.sourceBlockId);
+            if (!nb) {
+              console.warn('Skipping wiki link: missing block mapping', l);
+              continue;
+            }
+            blockKey = nb;
+          }
+          await db.execute(
+            `INSERT INTO wiki_links (source_page_id, target_page_id, source_block_id, updated_at, deleted_at)
+             VALUES (?, ?, ?, ?, NULL)
+             ON CONFLICT(source_page_id, target_page_id, source_block_id) DO UPDATE SET
+               updated_at = excluded.updated_at,
+               deleted_at = NULL`,
+            [sp, tp, blockKey, now],
+          );
+        }
+
+        await db.execute('COMMIT');
+      } catch (e) {
+        await db.execute('ROLLBACK');
+        throw e;
+      }
+
+      const rows = await db.select<WikiNamespaceRow>(
+        `SELECT id, kind, title, imported_mode, spoiler_override, book_hashes_json, created_at, updated_at FROM wiki_namespaces WHERE id = ?`,
+        [targetId],
+      );
+      return rowToNamespace(rows[0]!);
+    });
+  }
+
+  /**
+   * Resolves a page row for a [[link]] title: prefer live row, else revive soft-deleted (same slug),
+   * else insert a new ghost. Avoids UNIQUE(namespace_id, title_slug) collisions with deleted rows.
+   */
+  private async ensureTargetPageForWikiLink(
+    db: Awaited<ReturnType<AppService['openDatabase']>>,
+    namespaceId: string,
+    linkTitle: string,
+  ): Promise<WikiPage> {
+    const slug = wikiTitleToSlug(linkTitle);
+    const live = await db.select<WikiPageRow>(
+      `SELECT * FROM wiki_pages WHERE namespace_id = ? AND title_slug = ? AND deleted_at IS NULL`,
+      [namespaceId, slug],
+    );
+    if (live[0]) return rowToPage(live[0]);
+
+    const deleted = await db.select<WikiPageRow>(
+      `SELECT * FROM wiki_pages WHERE namespace_id = ? AND title_slug = ? AND deleted_at IS NOT NULL LIMIT 1`,
+      [namespaceId, slug],
+    );
+    if (deleted[0]) {
+      const now = Date.now();
+      await db.execute(
+        `UPDATE wiki_pages SET deleted_at = NULL, is_ghost = 1, title = ?, updated_at = ? WHERE id = ?`,
+        [linkTitle.trim(), now, deleted[0].id],
+      );
+      const revived = await db.select<WikiPageRow>(`SELECT * FROM wiki_pages WHERE id = ?`, [
+        deleted[0].id,
+      ]);
+      return rowToPage(revived[0]!);
+    }
+
+    const ghostId = crypto.randomUUID();
+    const now = Date.now();
+    await db.execute(
+      `INSERT INTO wiki_pages (
+        id, namespace_id, title, title_slug, page_type, summary_markdown,
+        first_seen_cfi, first_seen_book_hash, is_ghost, created_at, updated_at, deleted_at
+      ) VALUES (?, ?, ?, ?, NULL, '', NULL, NULL, 1, ?, ?, NULL)`,
+      [ghostId, namespaceId, linkTitle.trim(), slug, now, now],
+    );
+    const rows = await db.select<WikiPageRow>(`SELECT * FROM wiki_pages WHERE id = ?`, [ghostId]);
+    return rowToPage(rows[0]!);
+  }
+
   /** In-db variant for rename cascade (same connection). */
   private async upsertWikiLinksInDb(
     db: Awaited<ReturnType<AppService['openDatabase']>>,
@@ -992,40 +1618,38 @@ export class WikiStore {
   ): Promise<void> {
     const blockKey = linkKeyBlockId(sourceBlockId);
     const titles = parseWikiLinks(markdown);
+    const now = Date.now();
 
-    await db.execute(`DELETE FROM wiki_links WHERE source_page_id = ? AND source_block_id = ?`, [
-      sourcePageId,
-      blockKey,
-    ]);
+    const existing = await db.select<WikiLinkRow>(
+      `SELECT source_page_id, target_page_id, source_block_id, updated_at, deleted_at FROM wiki_links
+       WHERE source_page_id = ? AND source_block_id = ? AND deleted_at IS NULL`,
+      [sourcePageId, blockKey],
+    );
 
+    const newTargetIds: string[] = [];
     for (const linkTitle of titles) {
-      const slug = wikiTitleToSlug(linkTitle);
-      const rows = await db.select<WikiPageRow>(
-        `SELECT * FROM wiki_pages WHERE namespace_id = ? AND title_slug = ? AND deleted_at IS NULL`,
-        [namespaceId, slug],
-      );
+      const target = await this.ensureTargetPageForWikiLink(db, namespaceId, linkTitle);
+      newTargetIds.push(target.id);
+    }
+    const newSet = new Set(newTargetIds);
 
-      let targetId: string;
-      if (rows.length === 0) {
-        const ghostId = crypto.randomUUID();
-        const now = Date.now();
+    for (const row of existing) {
+      if (!newSet.has(row.target_page_id)) {
         await db.execute(
-          `INSERT INTO wiki_pages (
-            id, namespace_id, title, title_slug, page_type, summary_markdown,
-            first_seen_cfi, first_seen_book_hash, is_ghost, created_at, updated_at, deleted_at
-          ) VALUES (?, ?, ?, ?, NULL, '', NULL, NULL, 1, ?, ?, NULL)`,
-          [ghostId, namespaceId, linkTitle.trim(), slug, now, now],
+          `UPDATE wiki_links SET deleted_at = ?, updated_at = ? WHERE source_page_id = ? AND target_page_id = ? AND source_block_id = ?`,
+          [now, now, row.source_page_id, row.target_page_id, row.source_block_id],
         );
-        targetId = ghostId;
-      } else {
-        targetId = rows[0]!.id;
       }
+    }
 
+    for (const targetId of [...new Set(newTargetIds)]) {
       await db.execute(
-        `INSERT INTO wiki_links (source_page_id, target_page_id, source_block_id)
-         VALUES (?, ?, ?)
-         ON CONFLICT(source_page_id, target_page_id, source_block_id) DO NOTHING`,
-        [sourcePageId, targetId, blockKey],
+        `INSERT INTO wiki_links (source_page_id, target_page_id, source_block_id, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, NULL)
+         ON CONFLICT(source_page_id, target_page_id, source_block_id) DO UPDATE SET
+           deleted_at = NULL,
+           updated_at = excluded.updated_at`,
+        [sourcePageId, targetId, blockKey, now],
       );
     }
   }
