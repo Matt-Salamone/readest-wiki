@@ -340,4 +340,130 @@ describe('WikiStore', () => {
     const rows = await store.listSectionCatalog();
     expect(rows.filter((r) => r.name === 'MyCustom').length).toBe(1);
   });
+
+  test('listAllNamespaces and listAllPages order', async () => {
+    const bookA: Book = {
+      hash: 'ha',
+      format: 'EPUB',
+      title: 'A',
+      author: 'x',
+      createdAt: 1,
+      updatedAt: 1,
+      groupId: md5Fingerprint('Zeta'),
+      groupName: 'Zeta',
+    };
+    const bookB: Book = {
+      hash: 'hb',
+      format: 'EPUB',
+      title: 'B',
+      author: 'x',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const nsZ = await store.resolveNamespaceForBook(bookA);
+    const nsS = await store.resolveNamespaceForBook(bookB);
+    await store.createPage({ namespaceId: nsZ.id, title: 'ZPage', pageType: 'Person' });
+    await store.createPage({ namespaceId: nsS.id, title: 'Alpha', pageType: 'Location' });
+
+    const namespaces = await store.listAllNamespaces();
+    const titles = namespaces.map((n) => n.title.toLowerCase());
+    expect(titles.indexOf('b')).toBeLessThan(titles.indexOf('zeta'));
+
+    const allPages = await store.listAllPages();
+    expect(allPages.length).toBeGreaterThanOrEqual(2);
+    const forZ = allPages.filter((p) => p.namespaceId === nsZ.id).map((p) => p.title);
+    expect(forZ).toContain('ZPage');
+  });
+
+  test('listBacklinks joins source page and optional block', async () => {
+    const book: Book = {
+      hash: 'h1',
+      format: 'EPUB',
+      title: 'T',
+      author: 'A',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const ns = await store.resolveNamespaceForBook(book);
+    const target = await store.createPage({
+      namespaceId: ns.id,
+      title: 'Target',
+      pageType: 'Person',
+    });
+    const srcSummary = await store.createPage({
+      namespaceId: ns.id,
+      title: 'FromSummary',
+      summaryMarkdown: '[[Target]]',
+    });
+    await store.upsertWikiLinks(srcSummary.id, null, srcSummary.summaryMarkdown, ns.id);
+
+    const srcBlockPage = await store.createPage({
+      namespaceId: ns.id,
+      title: 'FromBlock',
+      summaryMarkdown: '',
+    });
+    const block = await store.createBlock({
+      pageId: srcBlockPage.id,
+      bookHash: 'h1',
+      cfi: 'cfi',
+      noteMarkdown: '[[Target]]',
+    });
+    await store.upsertWikiLinks(srcBlockPage.id, block.id, block.noteMarkdown ?? '', ns.id);
+
+    const backlinks = await store.listBacklinks(target.id);
+    expect(backlinks.length).toBe(2);
+    const fromSummary = backlinks.find((b) => b.sourcePage.id === srcSummary.id);
+    expect(fromSummary?.sourceBlock).toBeNull();
+    const fromBlock = backlinks.find((b) => b.sourcePage.id === srcBlockPage.id);
+    expect(fromBlock?.sourceBlock?.id).toBe(block.id);
+  });
+
+  test('listBacklinks skips deleted source block', async () => {
+    const book: Book = {
+      hash: 'h1',
+      format: 'EPUB',
+      title: 'T',
+      author: 'A',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const ns = await store.resolveNamespaceForBook(book);
+    const target = await store.createPage({ namespaceId: ns.id, title: 'T2', pageType: 'Person' });
+    const src = await store.createPage({ namespaceId: ns.id, title: 'Src', summaryMarkdown: '' });
+    const block = await store.createBlock({
+      pageId: src.id,
+      bookHash: 'h1',
+      cfi: 'cfi',
+      noteMarkdown: '[[T2]]',
+    });
+    await store.upsertWikiLinks(src.id, block.id, block.noteMarkdown ?? '', ns.id);
+    await store.softDeleteBlock(block.id);
+
+    const backlinks = await store.listBacklinks(target.id);
+    expect(backlinks.length).toBe(0);
+  });
+
+  test('countBlocksByPage and countBlocksByNamespace', async () => {
+    const book: Book = {
+      hash: 'h1',
+      format: 'EPUB',
+      title: 'T',
+      author: 'A',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const ns = await store.resolveNamespaceForBook(book);
+    const p1 = await store.createPage({ namespaceId: ns.id, title: 'P1', pageType: 'Misc' });
+    const p2 = await store.createPage({ namespaceId: ns.id, title: 'P2', pageType: 'Misc' });
+    await store.createBlock({ pageId: p1.id, bookHash: 'h1', cfi: 'a', quoteText: 'q' });
+    await store.createBlock({ pageId: p1.id, bookHash: 'h1', cfi: 'b', quoteText: 'q' });
+    await store.createBlock({ pageId: p2.id, bookHash: 'h1', cfi: 'c', quoteText: 'q' });
+
+    const byPage = await store.countBlocksByPage(ns.id);
+    expect(byPage[p1.id]).toBe(2);
+    expect(byPage[p2.id]).toBe(1);
+
+    const byNs = await store.countBlocksByNamespace();
+    expect(byNs[ns.id]).toBe(3);
+  });
 });

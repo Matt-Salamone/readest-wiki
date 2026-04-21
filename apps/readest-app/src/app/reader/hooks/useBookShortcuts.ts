@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useReaderStore } from '@/store/readerStore';
 import { useNotebookStore } from '@/store/notebookStore';
+import { useWikiPanelStore } from '@/store/wikiPanelStore';
 import { isTauriAppPlatform } from '@/services/environment';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -305,6 +306,13 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
     eventDispatcher.dispatch('toggle-bookmark', { bookKey: sideBarBookKey });
   };
 
+  const toggleWikiQuickLookup = () => {
+    const keys = useReaderStore.getState().bookKeys;
+    if (!keys?.length) return false;
+    useWikiPanelStore.getState().toggleWikiQuickLookup();
+    return true;
+  };
+
   const toggleParagraphMode = (event?: KeyboardEvent | MessageEvent) => {
     if (!sideBarBookKey) return false;
     if (event instanceof KeyboardEvent && event.repeat) return true;
@@ -377,6 +385,7 @@ const useBookShortcuts = ({ sideBarBookKey, bookKeys }: UseBookShortcutsProps) =
       onZoomOut: zoomOut,
       onResetZoom: resetZoom,
       onOpenCommandPalette: openCommandPalette,
+      onWikiQuickLookup: toggleWikiQuickLookup,
       onOpenShortcutsHelp: () => setShortcutsDialogVisible(true),
     },
     [sideBarBookKey, bookKeys],

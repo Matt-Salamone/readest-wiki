@@ -9,6 +9,8 @@ import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useReaderStore } from '@/store/readerStore';
 import { useLibraryStore } from '@/store/libraryStore';
+import { useAppRouter } from '@/hooks/useAppRouter';
+import { navigateToReader } from '@/utils/nav';
 import {
   acceptWikiBracketTitle,
   getWikiBracketSuggestContext,
@@ -20,7 +22,8 @@ import { confirmWikiDeletion } from '@/app/reader/components/wiki/wikiConfirmDel
 import { WIKI_TEXTAREA_FOCUS_WRAP } from '@/app/reader/components/wiki/wikiEditorClasses';
 
 interface WikiBlockListProps {
-  bookKey: string;
+  /** When null (e.g. global /wiki), Jump opens the reader with a `cfi` query param. */
+  bookKey: string | null;
   pageId: string;
   namespaceId: string;
   blocks: WikiBlock[];
@@ -46,6 +49,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
+  const router = useAppRouter();
   const getView = useReaderStore((s) => s.getView);
   const getBookByHash = useLibraryStore((s) => s.getBookByHash);
 
@@ -95,9 +99,14 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
     await onReload();
   };
 
-  const handleJump = (cfi: string) => {
+  const handleJump = (cfi: string, bookHash: string) => {
     if (!cfi?.trim()) return;
-    getView(bookKey)?.goTo(cfi.trim());
+    const trimmed = cfi.trim();
+    if (bookKey) {
+      getView(bookKey)?.goTo(trimmed);
+    } else {
+      navigateToReader(router, [bookHash], `cfi=${encodeURIComponent(trimmed)}`, { scroll: false });
+    }
   };
 
   const renderBlock = (block: WikiBlock) => {
@@ -133,7 +142,7 @@ const WikiBlockList: React.FC<WikiBlockListProps> = ({
             type='button'
             className='btn btn-ghost btn-xs'
             disabled={!block.cfi?.trim()}
-            onClick={() => handleJump(block.cfi)}
+            onClick={() => handleJump(block.cfi, block.bookHash)}
           >
             {_('Jump')}
           </button>

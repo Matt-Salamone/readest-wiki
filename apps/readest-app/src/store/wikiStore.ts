@@ -15,8 +15,11 @@ export interface WikiNamespaceCache {
 
 interface WikiState {
   activeNamespaceId: string | null;
+  allNamespaces: WikiNamespace[];
   caches: Record<string, WikiNamespaceCache>;
   loadNamespace: (store: WikiStore, book: Book) => Promise<WikiNamespace>;
+  loadNamespaceById: (store: WikiStore, namespaceId: string) => Promise<WikiNamespace | null>;
+  loadAllNamespaces: (store: WikiStore) => Promise<WikiNamespace[]>;
   setActiveNamespace: (id: string | null) => void;
   invalidatePage: (namespaceId: string, pageId: string) => void;
   invalidateNamespace: (namespaceId: string) => void;
@@ -29,6 +32,7 @@ interface WikiState {
 
 export const useWikiStore = create<WikiState>((set, get) => ({
   activeNamespaceId: null,
+  allNamespaces: [],
   caches: {},
 
   loadNamespace: async (store: WikiStore, book: Book) => {
@@ -69,6 +73,60 @@ export const useWikiStore = create<WikiState>((set, get) => ({
       return namespace;
     };
 
+    const run = wikiNamespaceLoadChain.then(() => task());
+    wikiNamespaceLoadChain = run.catch(() => {});
+    return run;
+  },
+
+  loadNamespaceById: async (store: WikiStore, namespaceId: string) => {
+    const task = async () => {
+      const namespace = await store.getNamespace(namespaceId);
+      if (!namespace) return null;
+
+      const pages = await store.listPages(namespaceId);
+      const tags = await store.listTags(namespaceId);
+
+      const pagesRecord: Record<string, WikiPage> = {};
+      for (const p of pages) {
+        pagesRecord[p.id] = p;
+      }
+
+      const blocksByPage: Record<string, WikiBlock[]> = {};
+      for (const p of pages) {
+        blocksByPage[p.id] = await store.listBlocksForPage(p.id);
+      }
+
+      const tagsRecord: Record<string, WikiTag> = {};
+      for (const t of tags) {
+        tagsRecord[t.id] = t;
+      }
+
+      const cache: WikiNamespaceCache = {
+        namespace,
+        pages: pagesRecord,
+        blocksByPage,
+        tags: tagsRecord,
+      };
+
+      set((state) => ({
+        activeNamespaceId: namespaceId,
+        caches: { ...state.caches, [namespaceId]: cache },
+      }));
+
+      return namespace;
+    };
+
+    const run = wikiNamespaceLoadChain.then(() => task());
+    wikiNamespaceLoadChain = run.catch(() => {});
+    return run;
+  },
+
+  loadAllNamespaces: async (store: WikiStore) => {
+    const task = async () => {
+      const list = await store.listAllNamespaces();
+      set({ allNamespaces: list });
+      return list;
+    };
     const run = wikiNamespaceLoadChain.then(() => task());
     wikiNamespaceLoadChain = run.catch(() => {});
     return run;

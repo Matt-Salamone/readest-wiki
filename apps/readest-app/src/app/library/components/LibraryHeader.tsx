@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import React, { useCallback, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FaSearch } from 'react-icons/fa';
+import { LuBookOpen } from 'react-icons/lu';
 import { PiPlus } from 'react-icons/pi';
 import { PiSelectionAll, PiSelectionAllFill } from 'react-icons/pi';
 import { PiDotsThreeCircle } from 'react-icons/pi';
@@ -150,6 +151,15 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = ({
               </button>
             )}
             <span className='bg-base-content/50 mx-2 h-4 w-[0.5px]'></span>
+            <button
+              type='button'
+              onClick={() => router.push('/wiki')}
+              aria-label={_('Wiki')}
+              title={_('Wiki')}
+              className='text-base-content/60 hover:text-base-content/85 touch-target flex items-center justify-center p-0.5'
+            >
+              <LuBookOpen className='h-5 w-5' />
+            </button>
             <Dropdown
               label={_('Import Books')}
               className={clsx(

@@ -383,6 +383,168 @@ export class WikiStore {
     });
   }
 
+  async listAllNamespaces(): Promise<WikiNamespace[]> {
+    return this.withDb(async (db) => {
+      const rows = await db.select<WikiNamespaceRow>(
+        `SELECT id, kind, title, imported_mode, book_hashes_json, created_at, updated_at
+         FROM wiki_namespaces ORDER BY title COLLATE NOCASE ASC`,
+      );
+      return rows.map(rowToNamespace);
+    });
+  }
+
+  async listAllPages(): Promise<WikiPage[]> {
+    return this.withDb(async (db) => {
+      const rows = await db.select<WikiPageRow>(
+        `SELECT * FROM wiki_pages WHERE deleted_at IS NULL ORDER BY namespace_id ASC, title COLLATE NOCASE ASC`,
+      );
+      return rows.map(rowToPage);
+    });
+  }
+
+  /**
+   * Inbound [[links]] to a page: source page/block rows (skips deleted sources).
+   */
+  async listBacklinks(
+    targetPageId: string,
+  ): Promise<Array<{ link: WikiLink; sourcePage: WikiPage; sourceBlock: WikiBlock | null }>> {
+    return this.withDb(async (db) => {
+      const rows = await db.select<{
+        source_page_id: string;
+        target_page_id: string;
+        source_block_id: string;
+        sp_id: string;
+        sp_namespace_id: string;
+        sp_title: string;
+        sp_title_slug: string;
+        sp_page_type: string | null;
+        sp_summary_markdown: string;
+        sp_first_seen_cfi: string | null;
+        sp_first_seen_book_hash: string | null;
+        sp_is_ghost: number;
+        sp_created_at: number;
+        sp_updated_at: number;
+        sp_deleted_at: number | null;
+        sb_id: string | null;
+        sb_page_id: string | null;
+        sb_book_hash: string | null;
+        sb_cfi: string | null;
+        sb_xpointer0: string | null;
+        sb_xpointer1: string | null;
+        sb_quote_text: string | null;
+        sb_note_markdown: string | null;
+        sb_tags_json: string | null;
+        sb_created_at: number | null;
+        sb_updated_at: number | null;
+        sb_deleted_at: number | null;
+      }>(
+        `SELECT
+          l.source_page_id, l.target_page_id, l.source_block_id,
+          sp.id AS sp_id, sp.namespace_id AS sp_namespace_id, sp.title AS sp_title,
+          sp.title_slug AS sp_title_slug, sp.page_type AS sp_page_type,
+          sp.summary_markdown AS sp_summary_markdown,
+          sp.first_seen_cfi AS sp_first_seen_cfi,
+          sp.first_seen_book_hash AS sp_first_seen_book_hash,
+          sp.is_ghost AS sp_is_ghost, sp.created_at AS sp_created_at,
+          sp.updated_at AS sp_updated_at, sp.deleted_at AS sp_deleted_at,
+          sb.id AS sb_id, sb.page_id AS sb_page_id, sb.book_hash AS sb_book_hash,
+          sb.cfi AS sb_cfi, sb.xpointer0 AS sb_xpointer0, sb.xpointer1 AS sb_xpointer1,
+          sb.quote_text AS sb_quote_text, sb.note_markdown AS sb_note_markdown,
+          sb.tags_json AS sb_tags_json, sb.created_at AS sb_created_at,
+          sb.updated_at AS sb_updated_at, sb.deleted_at AS sb_deleted_at
+        FROM wiki_links l
+        INNER JOIN wiki_pages sp ON sp.id = l.source_page_id AND sp.deleted_at IS NULL
+        LEFT JOIN wiki_blocks sb
+          ON sb.id = l.source_block_id
+          AND l.source_block_id != ''
+          AND sb.deleted_at IS NULL
+        WHERE l.target_page_id = ?
+          AND (l.source_block_id = '' OR sb.id IS NOT NULL)`,
+        [targetPageId],
+      );
+
+      const out: Array<{ link: WikiLink; sourcePage: WikiPage; sourceBlock: WikiBlock | null }> =
+        [];
+      for (const r of rows) {
+        const link: WikiLink = {
+          sourcePageId: r.source_page_id,
+          targetPageId: r.target_page_id,
+          sourceBlockId: r.source_block_id === '' ? null : r.source_block_id,
+        };
+        const sourcePage: WikiPage = rowToPage({
+          id: r.sp_id,
+          namespace_id: r.sp_namespace_id,
+          title: r.sp_title,
+          title_slug: r.sp_title_slug,
+          page_type: r.sp_page_type,
+          summary_markdown: r.sp_summary_markdown,
+          first_seen_cfi: r.sp_first_seen_cfi,
+          first_seen_book_hash: r.sp_first_seen_book_hash,
+          is_ghost: r.sp_is_ghost,
+          created_at: r.sp_created_at,
+          updated_at: r.sp_updated_at,
+          deleted_at: r.sp_deleted_at,
+        });
+        let sourceBlock: WikiBlock | null = null;
+        if (r.source_block_id !== '' && r.sb_id && r.sb_tags_json != null) {
+          sourceBlock = rowToBlock({
+            id: r.sb_id,
+            page_id: r.sb_page_id!,
+            book_hash: r.sb_book_hash!,
+            cfi: r.sb_cfi ?? '',
+            xpointer0: r.sb_xpointer0,
+            xpointer1: r.sb_xpointer1,
+            quote_text: r.sb_quote_text,
+            note_markdown: r.sb_note_markdown,
+            tags_json: r.sb_tags_json,
+            created_at: r.sb_created_at!,
+            updated_at: r.sb_updated_at!,
+            deleted_at: r.sb_deleted_at,
+          });
+        }
+        out.push({ link, sourcePage, sourceBlock });
+      }
+      return out;
+    });
+  }
+
+  /** Total blocks per namespace (for wiki index sidebar). */
+  async countBlocksByNamespace(): Promise<Record<string, number>> {
+    return this.withDb(async (db) => {
+      const rows = await db.select<{ namespace_id: string; c: number }>(
+        `SELECT p.namespace_id AS namespace_id, COUNT(*) AS c
+         FROM wiki_blocks b
+         INNER JOIN wiki_pages p ON p.id = b.page_id AND p.deleted_at IS NULL
+         WHERE b.deleted_at IS NULL
+         GROUP BY p.namespace_id`,
+      );
+      const acc: Record<string, number> = {};
+      for (const r of rows) {
+        acc[r.namespace_id] = r.c;
+      }
+      return acc;
+    });
+  }
+
+  /** Block counts per page id within a namespace (for index UI). */
+  async countBlocksByPage(namespaceId: string): Promise<Record<string, number>> {
+    return this.withDb(async (db) => {
+      const rows = await db.select<{ page_id: string; cnt: number }>(
+        `SELECT b.page_id AS page_id, COUNT(*) AS cnt
+         FROM wiki_blocks b
+         INNER JOIN wiki_pages p ON p.id = b.page_id AND p.namespace_id = ? AND p.deleted_at IS NULL
+         WHERE b.deleted_at IS NULL
+         GROUP BY b.page_id`,
+        [namespaceId],
+      );
+      const acc: Record<string, number> = {};
+      for (const r of rows) {
+        acc[r.page_id] = r.cnt;
+      }
+      return acc;
+    });
+  }
+
   async createPage(input: {
     namespaceId: string;
     title: string;

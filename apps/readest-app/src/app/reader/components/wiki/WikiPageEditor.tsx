@@ -24,7 +24,8 @@ import { confirmWikiDeletion } from '@/app/reader/components/wiki/wikiConfirmDel
 import { WIKI_TEXTAREA_FOCUS_WRAP } from '@/app/reader/components/wiki/wikiEditorClasses';
 
 interface WikiPageEditorProps {
-  bookKey: string;
+  /** When null (global /wiki), Jump on blocks opens the reader with `cfi`. */
+  bookKey: string | null;
   pageId: string | null;
   namespaceId: string | null;
   wiki: WikiStore | null;
@@ -32,6 +33,8 @@ interface WikiPageEditorProps {
   blocks: WikiBlock[];
   tagsById: Record<string, WikiTag>;
   onReload: () => Promise<void>;
+  /** If set (e.g. /wiki), used instead of wiki panel store for page selection. */
+  onSelectPage?: (pageId: string | null) => void;
 }
 
 const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
@@ -43,6 +46,7 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
   blocks,
   tagsById,
   onReload,
+  onSelectPage,
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
@@ -106,9 +110,13 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
 
   const handleNavigateToPage = useCallback(
     (id: string) => {
-      setActivePageId(id);
+      if (onSelectPage) {
+        onSelectPage(id);
+      } else {
+        setActivePageId(id);
+      }
     },
-    [setActivePageId],
+    [onSelectPage, setActivePageId],
   );
 
   const commitTitle = async () => {
@@ -145,7 +153,11 @@ const WikiPageEditor: React.FC<WikiPageEditorProps> = ({
       return;
     }
     await wiki.softDeletePage(page.id);
-    setActivePageId(null);
+    if (onSelectPage) {
+      onSelectPage(null);
+    } else {
+      setActivePageId(null);
+    }
     await reloadWiki();
   };
 

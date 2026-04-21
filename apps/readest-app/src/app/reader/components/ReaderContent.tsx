@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { Book } from '@/types/book';
 import { useEnv } from '@/context/EnvContext';
@@ -31,12 +31,14 @@ import Spinner from '@/components/Spinner';
 import SideBar from './sidebar/SideBar';
 import Notebook from './notebook/Notebook';
 import WikiPanel from './wiki/WikiPanel';
+import WikiQuickLookupModal from './wiki/WikiQuickLookupModal';
 import BooksGrid from './BooksGrid';
 import SettingsDialog from '@/components/settings/SettingsDialog';
 
 const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ ids, settings }) => {
   const _ = useTranslation();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { envConfig, appService } = useEnv();
   const { bookKeys, dismissBook, getNextBookKey } = useBooksManager();
@@ -50,6 +52,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
   const isInitiating = useRef(false);
   const [loading, setLoading] = useState(false);
   const [errorLoading, setErrorLoading] = useState(false);
+  const cfiHandledRef = useRef(false);
 
   useBookShortcuts({ sideBarBookKey, bookKeys });
   useGamepad();
@@ -85,6 +88,33 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /** Deep-link from global wiki "Jump": `/reader?...&cfi=...` — navigate once the view exists. */
+  useEffect(() => {
+    if (cfiHandledRef.current || !bookKeys?.length) return;
+    const raw = searchParams?.get('cfi');
+    if (!raw?.trim()) return;
+    const cfi = decodeURIComponent(raw.trim());
+    const primaryKey = bookKeys[0]!;
+    const view = getView(primaryKey);
+    if (!view?.goTo) return;
+
+    const timer = window.setTimeout(() => {
+      try {
+        view.goTo(cfi);
+        cfiHandledRef.current = true;
+        const params = new URLSearchParams(searchParams?.toString() ?? '');
+        params.delete('cfi');
+        const qs = params.toString();
+        const base = pathname || '/reader';
+        router.replace(qs ? `${base}?${qs}` : base, { scroll: false });
+      } catch (e) {
+        console.warn('cfi deep-link navigation failed', e);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [bookKeys, searchParams, pathname, getView, router]);
 
   useEffect(() => {
     const handleShowBookDetails = (event: CustomEvent) => {
@@ -234,6 +264,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
       {isSettingsDialogOpen && <SettingsDialog bookKey={settingsDialogBookKey} />}
       <Notebook />
       <WikiPanel />
+      <WikiQuickLookupModal />
       {showDetailsBook && (
         <BookDetailModal
           isOpen={!!showDetailsBook}

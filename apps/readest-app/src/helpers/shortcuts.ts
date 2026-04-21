@@ -143,6 +143,11 @@ const DEFAULT_SHORTCUTS = {
     description: _('Open Command Palette'),
     section: 'General',
   },
+  onWikiQuickLookup: {
+    keys: ['ctrl+k', 'cmd+k'],
+    description: _('Wiki Quick Lookup'),
+    section: 'General',
+  },
   onOpenShortcutsHelp: {
     keys: ['shift+?'],
     description: _('Show Keyboard Shortcuts'),
