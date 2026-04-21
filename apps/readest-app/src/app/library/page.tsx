@@ -18,7 +18,7 @@ import { throttle } from '@/utils/throttle';
 import { transferManager } from '@/services/transferManager';
 import { getDirPath, getFilename, joinPaths } from '@/utils/path';
 import { parseOpenWithFiles } from '@/helpers/openWith';
-import { isTauriAppPlatform, isWebAppPlatform } from '@/services/environment';
+import { isTauriShell, isWebAppPlatform } from '@/services/environment';
 import { checkForAppUpdates, checkAppReleaseNotes } from '@/helpers/updater';
 import { impactFeedback } from '@tauri-apps/plugin-haptics';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
@@ -177,17 +177,17 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
 
   useShortcuts({
     onToggleFullscreen: async () => {
-      if (isTauriAppPlatform()) {
+      if (isTauriShell()) {
         await tauriHandleToggleFullScreen();
       }
     },
     onCloseWindow: async () => {
-      if (isTauriAppPlatform()) {
+      if (isTauriShell()) {
         await tauriHandleClose();
       }
     },
     onQuitApp: async () => {
-      if (isTauriAppPlatform()) {
+      if (isTauriShell()) {
         await tauriQuitApp();
       }
     },
@@ -279,7 +279,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
         checkAppReleaseNotes();
       }
     };
-    if (settings.alwaysOnTop) {
+    if (isTauriShell() && settings.alwaysOnTop) {
       tauriHandleSetAlwaysOnTop(settings.alwaysOnTop);
     }
     doCheckAppUpdates();
@@ -293,25 +293,23 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   }, [appService]);
 
   useEffect(() => {
-    if (appService?.hasWindow) {
-      const currentWebview = getCurrentWebview();
-      const unlisten = currentWebview.listen('close-reader-window', async () => {
-        // Reader windows are independent Tauri webviews with their own
-        // libraryStore instance — progress / readingStatus / move-to-front
-        // updates from the reader window do NOT propagate to this main
-        // window's store. Reload from disk so the library reflects the
-        // changes the reader just persisted.
-        const appService = await envConfig.getAppService();
-        const settings = await appService.loadSettings();
-        const library = await appService.loadLibraryBooks();
-        setSettings(settings);
-        setLibrary(library);
-      });
-      return () => {
-        unlisten.then((fn) => fn());
-      };
-    }
-    return;
+    if (!isTauriShell() || !appService?.hasWindow) return;
+    const currentWebview = getCurrentWebview();
+    const unlisten = currentWebview.listen('close-reader-window', async () => {
+      // Reader windows are independent Tauri webviews with their own
+      // libraryStore instance — progress / readingStatus / move-to-front
+      // updates from the reader window do NOT propagate to this main
+      // window's store. Reload from disk so the library reflects the
+      // changes the reader just persisted.
+      const appService = await envConfig.getAppService();
+      const settings = await appService.loadSettings();
+      const library = await appService.loadLibraryBooks();
+      setSettings(settings);
+      setLibrary(library);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appService, envConfig]);
 
@@ -793,7 +791,7 @@ const LibraryPageContent = ({ searchParams }: { searchParams: ReadonlyURLSearchP
   };
 
   const handleImportBooksFromDirectory = async () => {
-    if (!appService || !isTauriAppPlatform()) return;
+    if (!appService || !isTauriShell()) return;
 
     setIsSelectMode(false);
     console.log('Importing books from directory...');

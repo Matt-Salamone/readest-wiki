@@ -1,11 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────
-let mockIsWebAppPlatform = false;
+let mockIsTauriShell = true;
 let mockHasCli = false;
 
 vi.mock('@/services/environment', () => ({
-  isWebAppPlatform: () => mockIsWebAppPlatform,
+  isTauriShell: () => mockIsTauriShell,
   hasCli: () => mockHasCli,
 }));
 
@@ -31,7 +31,7 @@ beforeEach(() => {
   // Suppress expected console noise from parseIntentOpenWithFiles.
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'info').mockImplementation(() => {});
-  mockIsWebAppPlatform = false;
+  mockIsTauriShell = true;
   mockHasCli = false;
   // Reset window globals
   delete window.OPEN_WITH_FILES;
@@ -47,10 +47,10 @@ afterEach(() => {
 });
 
 describe('parseOpenWithFiles', () => {
-  // ── Web platform ───────────────────────────────────────────────
-  describe('web platform', () => {
-    test('returns empty array on web platform', async () => {
-      mockIsWebAppPlatform = true;
+  // ── Outside Tauri webview (e.g. normal browser with tauri dev build) ──
+  describe('non-Tauri shell', () => {
+    test('returns empty array when not inside the Tauri webview', async () => {
+      mockIsTauriShell = false;
 
       const result = await parseOpenWithFiles(null);
 

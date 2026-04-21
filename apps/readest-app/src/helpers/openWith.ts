@@ -1,4 +1,4 @@
-import { isWebAppPlatform, hasCli } from '@/services/environment';
+import { hasCli, isTauriShell } from '@/services/environment';
 import { AppService } from '@/types/system';
 import { getCurrent } from '@tauri-apps/plugin-deep-link';
 
@@ -61,7 +61,7 @@ const parseIntentOpenWithFiles = async (appService: AppService | null) => {
 };
 
 export const parseOpenWithFiles = async (appService: AppService | null) => {
-  if (isWebAppPlatform()) return [];
+  if (!isTauriShell()) return [];
 
   let files = parseWindowOpenWithFiles();
   if ((!files || files.length === 0) && hasCli()) {

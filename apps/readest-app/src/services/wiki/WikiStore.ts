@@ -13,7 +13,8 @@ import type {
   WikiTag,
 } from '@/types/wiki';
 import type { AppService } from '@/types/system';
-import { runOnWikiDb } from '@/store/wikiStore';
+import { runOnWikiDb } from '@/store/wikiDbMutex';
+import { closeWikiDatabaseCache, getOrOpenWikiDatabase } from './wikiDbCache';
 import { md5Fingerprint } from '@/utils/md5';
 import { getAppVersion } from '@/utils/version';
 
@@ -254,12 +255,8 @@ export class WikiStore {
 
   private async withDb<T>(fn: (db: Awaited<ReturnType<AppService['openDatabase']>>) => Promise<T>) {
     return runOnWikiDb(async () => {
-      const db = await this.appService.openDatabase(DB_SCHEMA, DB_PATH, 'Data');
-      try {
-        return await fn(db);
-      } finally {
-        await db.close();
-      }
+      const db = await getOrOpenWikiDatabase(this.appService);
+      return await fn(db);
     });
   }
 
@@ -1045,10 +1042,10 @@ export class WikiStore {
     });
   }
 
-  /** Best-effort: drain queued wiki DB work (each `withDb` open/close is immediate). */
+  /** Best-effort: drain queued wiki DB work, then close the cached wiki connection. */
   async closeDb(): Promise<void> {
     await runOnWikiDb(async () => {
-      /* no-op */
+      await closeWikiDatabaseCache();
     });
   }
 

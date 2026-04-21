@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Book, BookGroupType, BooksGroup, ReadingStatus } from '@/types/book';
-import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
+import { EnvConfigType, isTauriShell } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { md5Fingerprint } from '@/utils/md5';
 
@@ -70,8 +70,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   groups: {},
   hashIndex: new Map(),
   visibleLibrary: [],
-  checkOpenWithBooks: isTauriAppPlatform(),
-  checkLastOpenBooks: isTauriAppPlatform(),
+  checkOpenWithBooks: isTauriShell(),
+  checkLastOpenBooks: isTauriShell(),
 
   setIsSyncing: (syncing: boolean) => set({ isSyncing: syncing }),
   setSyncProgress: (progress: number) => set({ syncProgress: progress }),

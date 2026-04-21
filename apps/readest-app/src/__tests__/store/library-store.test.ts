@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('@/services/environment', () => ({
-  isTauriAppPlatform: () => false,
+  isTauriShell: () => false,
 }));
 
 vi.mock('@/utils/md5', () => ({

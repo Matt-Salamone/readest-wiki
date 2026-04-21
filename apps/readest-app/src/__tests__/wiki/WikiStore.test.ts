@@ -7,6 +7,7 @@ import type { AppService } from '@/types/system';
 import type { DatabaseService } from '@/types/database';
 import type { Book } from '@/types/book';
 import { md5Fingerprint } from '@/utils/md5';
+import { closeWikiDatabaseCache } from '@/services/wiki/wikiDbCache';
 
 describe('parseWikiLinks / wikiTitleToSlug', () => {
   test('parses unique links in order', () => {
@@ -29,6 +30,7 @@ describe('WikiStore', () => {
   let store: WikiStore;
 
   beforeEach(async () => {
+    await closeWikiDatabaseCache();
     vi.clearAllMocks();
     sharedDb = await NodeDatabaseService.open(':memory:');
     await migrate(sharedDb, getMigrations('wiki'));
@@ -42,6 +44,7 @@ describe('WikiStore', () => {
 
   afterEach(async () => {
     vi.mocked(sharedDb.close).mockRestore();
+    await closeWikiDatabaseCache();
     await sharedDb.close();
   });
 

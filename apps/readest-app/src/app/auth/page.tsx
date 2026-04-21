@@ -15,7 +15,7 @@ import { useThemeStore } from '@/store/themeStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useTrafficLightStore } from '@/store/trafficLightStore';
-import { getBaseUrl, isTauriAppPlatform } from '@/services/environment';
+import { getBaseUrl, isTauriShell } from '@/services/environment';
 import WindowButtons from '@/components/WindowButtons';
 
 const WEB_AUTH_CALLBACK = `${getBaseUrl()}/auth/callback`;
@@ -44,7 +44,7 @@ export default function AuthPage() {
 
   /** Supabase email (magic link, signup, reset) redirect — no third-party OAuth. */
   const getSupabaseEmailRedirectTo = () => {
-    if (!isTauriAppPlatform()) {
+    if (!isTauriShell()) {
       return getWebRedirectTo();
     }
     if (appService?.isMobileApp) {
@@ -199,7 +199,7 @@ export default function AuthPage() {
     </div>
   );
 
-  return isTauriAppPlatform() ? (
+  return isTauriShell() ? (
     <div
       className={clsx(
         'bg-base-100 full-height inset-0 flex select-none flex-col items-center overflow-hidden',

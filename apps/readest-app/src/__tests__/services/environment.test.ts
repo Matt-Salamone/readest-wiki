@@ -19,6 +19,7 @@ beforeEach(() => {
   Object.assign(env, originalEnv);
   // Clean up any window globals we set
   delete (window as unknown as Record<string, unknown>)['__READEST_CLI_ACCESS'];
+  delete (window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__'];
 });
 
 describe('environment', () => {
@@ -40,6 +41,42 @@ describe('environment', () => {
       delete env['NEXT_PUBLIC_APP_PLATFORM'];
       const { isTauriAppPlatform } = await import('@/services/environment');
       expect(isTauriAppPlatform()).toBe(false);
+    });
+  });
+
+  // ── isTauriRuntime / isTauriShell ───────────────────────────────
+  describe('isTauriRuntime', () => {
+    test('returns false when __TAURI_INTERNALS__ is not set', async () => {
+      const { isTauriRuntime } = await import('@/services/environment');
+      expect(isTauriRuntime()).toBe(false);
+    });
+
+    test('returns true when __TAURI_INTERNALS__ is set', async () => {
+      (window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
+      const { isTauriRuntime } = await import('@/services/environment');
+      expect(isTauriRuntime()).toBe(true);
+    });
+  });
+
+  describe('isTauriShell', () => {
+    test('returns false for web platform even if __TAURI_INTERNALS__ is set', async () => {
+      env['NEXT_PUBLIC_APP_PLATFORM'] = 'web';
+      (window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
+      const { isTauriShell } = await import('@/services/environment');
+      expect(isTauriShell()).toBe(false);
+    });
+
+    test('returns false for tauri build when opened outside the webview', async () => {
+      env['NEXT_PUBLIC_APP_PLATFORM'] = 'tauri';
+      const { isTauriShell } = await import('@/services/environment');
+      expect(isTauriShell()).toBe(false);
+    });
+
+    test('returns true for tauri build inside the webview', async () => {
+      env['NEXT_PUBLIC_APP_PLATFORM'] = 'tauri';
+      (window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
+      const { isTauriShell } = await import('@/services/environment');
+      expect(isTauriShell()).toBe(true);
     });
   });
 
@@ -193,6 +230,7 @@ describe('environment', () => {
     test('returns /api in web development mode', async () => {
       env['NODE_ENV'] = 'development';
       env['NEXT_PUBLIC_APP_PLATFORM'] = 'web';
+      delete env['NEXT_PUBLIC_API_BASE_URL'];
       const { getAPIBaseUrl } = await import('@/services/environment');
       expect(getAPIBaseUrl()).toBe('/api');
     });
@@ -205,12 +243,20 @@ describe('environment', () => {
       expect(getAPIBaseUrl()).toBe('https://web.readest.com/api');
     });
 
-    test('returns full URL for tauri platform even in development', async () => {
+    test('returns /api for tauri platform in development when NEXT_PUBLIC_API_BASE_URL unset', async () => {
       env['NODE_ENV'] = 'development';
       env['NEXT_PUBLIC_APP_PLATFORM'] = 'tauri';
       delete env['NEXT_PUBLIC_API_BASE_URL'];
       const { getAPIBaseUrl } = await import('@/services/environment');
-      expect(getAPIBaseUrl()).toBe('https://web.readest.com/api');
+      expect(getAPIBaseUrl()).toBe('/api');
+    });
+
+    test('returns configured host for tauri in development when NEXT_PUBLIC_API_BASE_URL set', async () => {
+      env['NODE_ENV'] = 'development';
+      env['NEXT_PUBLIC_APP_PLATFORM'] = 'tauri';
+      env['NEXT_PUBLIC_API_BASE_URL'] = 'https://staging.example.com';
+      const { getAPIBaseUrl } = await import('@/services/environment');
+      expect(getAPIBaseUrl()).toBe('https://staging.example.com/api');
     });
   });
 
@@ -219,6 +265,7 @@ describe('environment', () => {
     test('returns /api in web development mode', async () => {
       env['NODE_ENV'] = 'development';
       env['NEXT_PUBLIC_APP_PLATFORM'] = 'web';
+      delete env['NEXT_PUBLIC_API_BASE_URL'];
       const { getNodeAPIBaseUrl } = await import('@/services/environment');
       expect(getNodeAPIBaseUrl()).toBe('/api');
     });
@@ -231,12 +278,13 @@ describe('environment', () => {
       expect(getNodeAPIBaseUrl()).toBe('https://node.readest.com/api');
     });
 
-    test('returns full node URL for tauri platform even in development', async () => {
+    test('returns /api for tauri platform in development when NEXT_PUBLIC_API_BASE_URL unset', async () => {
       env['NODE_ENV'] = 'development';
       env['NEXT_PUBLIC_APP_PLATFORM'] = 'tauri';
+      delete env['NEXT_PUBLIC_API_BASE_URL'];
       delete env['NEXT_PUBLIC_NODE_BASE_URL'];
       const { getNodeAPIBaseUrl } = await import('@/services/environment');
-      expect(getNodeAPIBaseUrl()).toBe('https://node.readest.com/api');
+      expect(getNodeAPIBaseUrl()).toBe('/api');
     });
   });
 

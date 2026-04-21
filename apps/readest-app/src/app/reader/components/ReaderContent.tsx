@@ -16,7 +16,7 @@ import { parseOpenWithFiles } from '@/helpers/openWith';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import { tauriHandleClose, tauriHandleOnCloseWindow } from '@/utils/window';
-import { isTauriAppPlatform } from '@/services/environment';
+import { isTauriShell } from '@/services/environment';
 import { uniqueId } from '@/utils/misc';
 import { throttle } from '@/utils/throttle';
 import { eventDispatcher } from '@/utils/event';
@@ -139,7 +139,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     }
 
     let unlistenOnCloseWindow: Promise<UnlistenFn>;
-    if (isTauriAppPlatform()) {
+    if (isTauriShell()) {
       unlistenOnCloseWindow = tauriHandleOnCloseWindow(handleCloseBooks);
     }
     window.addEventListener('beforeunload', handleCloseBooks);
@@ -204,7 +204,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
 
   const handleCloseBooksToLibrary = () => {
     handleCloseBooks();
-    if (isTauriAppPlatform()) {
+    if (isTauriShell()) {
       const currentWindow = getCurrentWindow();
       if (currentWindow.label === 'main') {
         navigateBackToLibrary();
@@ -225,13 +225,15 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
     if (bookKeys.filter((key) => key !== bookKey).length == 0) {
       const openWithFiles = (await parseOpenWithFiles(appService)) || [];
       if (appService?.hasWindow) {
-        if (openWithFiles.length > 0) {
+        if (openWithFiles.length > 0 && isTauriShell()) {
           tauriHandleOnCloseWindow(handleCloseBooks);
           return await tauriHandleClose();
         }
-        const currentWindow = getCurrentWindow();
-        if (currentWindow.label.startsWith('reader')) {
-          return await currentWindow.close();
+        if (isTauriShell()) {
+          const currentWindow = getCurrentWindow();
+          if (currentWindow.label.startsWith('reader')) {
+            return await currentWindow.close();
+          }
         }
       }
       saveSettingsAndGoToLibrary();

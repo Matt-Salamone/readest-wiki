@@ -2,7 +2,6 @@ import { getAPIBaseUrl, isWebAppPlatform } from '@/services/environment';
 import { AppService } from '@/types/system';
 import { getUserID } from '@/utils/access';
 import { fetchWithAuth } from '@/utils/fetch';
-import { createSupabaseClient } from '@/utils/supabase';
 import {
   tauriUpload,
   tauriDownload,
@@ -11,6 +10,38 @@ import {
   ProgressHandler,
   ProgressPayload,
 } from '@/utils/transfer';
+
+/** Same body/headers as @supabase/storage-js `uploadToSignedUrl` for Blob/File (PUT + multipart). */
+async function putToSupabaseSignedUploadUrl(
+  signedUrl: string,
+  file: File,
+  fileOptions: { upsert: boolean; cacheControl: string },
+): Promise<void> {
+  const anonKey =
+    process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] || process.env['SUPABASE_ANON_KEY'] || '';
+  const form = new FormData();
+  form.append('cacheControl', fileOptions.cacheControl);
+  form.append('', file);
+
+  const headers: Record<string, string> = {
+    'x-upsert': String(fileOptions.upsert),
+  };
+  if (anonKey) {
+    headers.apikey = anonKey;
+    headers.Authorization = `Bearer ${anonKey}`;
+  }
+
+  const res = await fetch(signedUrl, {
+    method: 'PUT',
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as { message?: string; msg?: string } | null;
+    throw new Error(err?.message || err?.msg || `Upload failed (${res.status})`);
+  }
+}
 
 const API_ENDPOINTS = {
   upload: getAPIBaseUrl() + '/storage/upload',
@@ -68,14 +99,14 @@ export const uploadFile = async (
     };
     const { uploadUrl, downloadUrl, supabaseSignedUpload } = body;
 
-    if (supabaseSignedUpload) {
-      const supabase = createSupabaseClient();
-      const { error } = await supabase.storage
-        .from(supabaseSignedUpload.bucket)
-        .uploadToSignedUrl(supabaseSignedUpload.path, supabaseSignedUpload.token, file);
-      if (error) {
-        throw new Error(error.message);
-      }
+    if (supabaseSignedUpload && uploadUrl) {
+      // Use the exact `signedUrl` from the API. Rebuilding the URL from path/token can diverge
+      // (encoding) from what `createSignedUploadUrl` returned and yields "Invalid signature".
+      // Options mirror @supabase/storage-js defaults + server `createSignedUploadUrl({ upsert: true })`.
+      await putToSupabaseSignedUploadUrl(uploadUrl, file, {
+        upsert: true,
+        cacheControl: '3600',
+      });
     } else if (isWebAppPlatform()) {
       await webUpload(file, uploadUrl, onProgress);
     } else {

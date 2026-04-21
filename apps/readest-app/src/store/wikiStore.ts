@@ -3,32 +3,7 @@ import type { Book } from '@/types/book';
 import type { WikiNamespace, WikiPage, WikiBlock, WikiTag } from '@/types/wiki';
 import type { WikiStore } from '@/services/wiki';
 
-/** SQLite (Turso/libsql) only allows one in-flight connection per wiki DB — serialize all wiki DB work. */
-let wikiDbChain: Promise<unknown> = Promise.resolve();
-
-/**
- * Depth of nested wiki DB work. `loadNamespace` / `loadNamespaceById` run inside this queue while
- * calling `WikiStore` methods that also use `runOnWikiDb` (via `withDb`). Without re-entrancy those
- * inner calls would deadlock waiting on the outer task.
- */
-let wikiDbRunDepth = 0;
-
-/** Chain wiki DB tasks so open/close cycles never overlap (fixes "concurrent use forbidden"). */
-export function runOnWikiDb<T>(task: () => Promise<T>): Promise<T> {
-  if (wikiDbRunDepth > 0) {
-    return task();
-  }
-  const run = wikiDbChain.then(async () => {
-    wikiDbRunDepth += 1;
-    try {
-      return await task();
-    } finally {
-      wikiDbRunDepth -= 1;
-    }
-  });
-  wikiDbChain = run.catch(() => {});
-  return run;
-}
+export { runOnWikiDb } from './wikiDbMutex';
 
 export interface WikiNamespaceCache {
   namespace: WikiNamespace;
@@ -62,94 +37,83 @@ export const useWikiStore = create<WikiState>((set, get) => ({
   caches: {},
 
   loadNamespace: async (store: WikiStore, book: Book) => {
-    const task = async () => {
-      const namespace = await store.resolveNamespaceForBook(book);
-      const namespaceId = namespace.id;
+    const namespace = await store.resolveNamespaceForBook(book);
+    const namespaceId = namespace.id;
 
-      const pages = await store.listPages(namespaceId);
-      const tags = await store.listTags(namespaceId);
+    const pages = await store.listPages(namespaceId);
+    const tags = await store.listTags(namespaceId);
 
-      const pagesRecord: Record<string, WikiPage> = {};
-      for (const p of pages) {
-        pagesRecord[p.id] = p;
-      }
+    const pagesRecord: Record<string, WikiPage> = {};
+    for (const p of pages) {
+      pagesRecord[p.id] = p;
+    }
 
-      const blocksByPage: Record<string, WikiBlock[]> = {};
-      for (const p of pages) {
-        blocksByPage[p.id] = await store.listBlocksForPage(p.id);
-      }
+    const blocksByPage: Record<string, WikiBlock[]> = {};
+    for (const p of pages) {
+      blocksByPage[p.id] = await store.listBlocksForPage(p.id);
+    }
 
-      const tagsRecord: Record<string, WikiTag> = {};
-      for (const t of tags) {
-        tagsRecord[t.id] = t;
-      }
+    const tagsRecord: Record<string, WikiTag> = {};
+    for (const t of tags) {
+      tagsRecord[t.id] = t;
+    }
 
-      const cache: WikiNamespaceCache = {
-        namespace,
-        pages: pagesRecord,
-        blocksByPage,
-        tags: tagsRecord,
-      };
-
-      set((state) => ({
-        activeNamespaceId: namespaceId,
-        caches: { ...state.caches, [namespaceId]: cache },
-      }));
-
-      return namespace;
+    const cache: WikiNamespaceCache = {
+      namespace,
+      pages: pagesRecord,
+      blocksByPage,
+      tags: tagsRecord,
     };
 
-    return runOnWikiDb(task);
+    set((state) => ({
+      activeNamespaceId: namespaceId,
+      caches: { ...state.caches, [namespaceId]: cache },
+    }));
+
+    return namespace;
   },
 
   loadNamespaceById: async (store: WikiStore, namespaceId: string) => {
-    const task = async () => {
-      const namespace = await store.getNamespace(namespaceId);
-      if (!namespace) return null;
+    const namespace = await store.getNamespace(namespaceId);
+    if (!namespace) return null;
 
-      const pages = await store.listPages(namespaceId);
-      const tags = await store.listTags(namespaceId);
+    const pages = await store.listPages(namespaceId);
+    const tags = await store.listTags(namespaceId);
 
-      const pagesRecord: Record<string, WikiPage> = {};
-      for (const p of pages) {
-        pagesRecord[p.id] = p;
-      }
+    const pagesRecord: Record<string, WikiPage> = {};
+    for (const p of pages) {
+      pagesRecord[p.id] = p;
+    }
 
-      const blocksByPage: Record<string, WikiBlock[]> = {};
-      for (const p of pages) {
-        blocksByPage[p.id] = await store.listBlocksForPage(p.id);
-      }
+    const blocksByPage: Record<string, WikiBlock[]> = {};
+    for (const p of pages) {
+      blocksByPage[p.id] = await store.listBlocksForPage(p.id);
+    }
 
-      const tagsRecord: Record<string, WikiTag> = {};
-      for (const t of tags) {
-        tagsRecord[t.id] = t;
-      }
+    const tagsRecord: Record<string, WikiTag> = {};
+    for (const t of tags) {
+      tagsRecord[t.id] = t;
+    }
 
-      const cache: WikiNamespaceCache = {
-        namespace,
-        pages: pagesRecord,
-        blocksByPage,
-        tags: tagsRecord,
-      };
-
-      set((state) => ({
-        activeNamespaceId: namespaceId,
-        caches: { ...state.caches, [namespaceId]: cache },
-      }));
-
-      return namespace;
+    const cache: WikiNamespaceCache = {
+      namespace,
+      pages: pagesRecord,
+      blocksByPage,
+      tags: tagsRecord,
     };
 
-    return runOnWikiDb(task);
+    set((state) => ({
+      activeNamespaceId: namespaceId,
+      caches: { ...state.caches, [namespaceId]: cache },
+    }));
+
+    return namespace;
   },
 
   loadAllNamespaces: async (store: WikiStore) => {
-    const task = async () => {
-      const list = await store.listAllNamespaces();
-      set({ allNamespaces: list });
-      return list;
-    };
-    return runOnWikiDb(task);
+    const list = await store.listAllNamespaces();
+    set({ allNamespaces: list });
+    return list;
   },
 
   invalidateAll: () =>

@@ -4,10 +4,21 @@ import { READEST_NODE_BASE_URL, READEST_WEB_BASE_URL } from './constants';
 declare global {
   interface Window {
     __READEST_CLI_ACCESS?: boolean;
+    /** Present only inside the Tauri webview (Tauri v2). */
+    __TAURI_INTERNALS__?: unknown;
   }
 }
 
 export const isTauriAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'tauri';
+
+/** True when this JS is running inside the Tauri webview (false in a normal browser tab). */
+export const isTauriRuntime = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return window.__TAURI_INTERNALS__ != null;
+};
+
+/** Tauri desktop/mobile shell: correct build flag and actual Tauri APIs available. */
+export const isTauriShell = (): boolean => isTauriAppPlatform() && isTauriRuntime();
 export const isWebAppPlatform = () => process.env['NEXT_PUBLIC_APP_PLATFORM'] === 'web';
 export const hasCli = () => window.__READEST_CLI_ACCESS === true;
 export const isPWA = () => window.matchMedia('(display-mode: standalone)').matches;
@@ -20,15 +31,20 @@ export const isMacPlatform = () =>
 
 export const getCommandPaletteShortcut = () => (isMacPlatform() ? '⌘⇧P' : 'Ctrl+Shift+P');
 
-const isWebDevMode = () => process.env['NODE_ENV'] === 'development' && isWebAppPlatform();
+/**
+ * Same-origin `/api` for local Next `pages/api` routes. Applies to `pnpm dev-web`
+ * and `pnpm tauri dev` when `NEXT_PUBLIC_API_BASE_URL` is unset, so sync uses the
+ * same Supabase project as this dev server (not the default web.readest.com host).
+ */
+const useRelativeDevAPI = () =>
+  process.env['NODE_ENV'] === 'development' &&
+  (isWebAppPlatform() || isTauriAppPlatform()) &&
+  !process.env['NEXT_PUBLIC_API_BASE_URL'];
 
-// Dev API only in development mode and web platform
-// with command `pnpm dev-web`
-// for production build or tauri app use the production Web API
-export const getAPIBaseUrl = () => (isWebDevMode() ? '/api' : `${getBaseUrl()}/api`);
+export const getAPIBaseUrl = () => (useRelativeDevAPI() ? '/api' : `${getBaseUrl()}/api`);
 
 // For Node.js API that currently not supported in some edge runtimes
-export const getNodeAPIBaseUrl = () => (isWebDevMode() ? '/api' : `${getNodeBaseUrl()}/api`);
+export const getNodeAPIBaseUrl = () => (useRelativeDevAPI() ? '/api' : `${getNodeBaseUrl()}/api`);
 
 export interface EnvConfigType {
   getAppService: () => Promise<AppService>;
@@ -56,11 +72,12 @@ const getWebAppService = async () => {
 
 const environmentConfig: EnvConfigType = {
   getAppService: async () => {
-    if (isTauriAppPlatform()) {
+    // Email magic links / confirm links open in the system browser: same bundle may have
+    // NEXT_PUBLIC_APP_PLATFORM=tauri but window.__TAURI_INTERNALS__ is undefined — use web service.
+    if (isTauriShell()) {
       return getNativeAppService();
-    } else {
-      return getWebAppService();
     }
+    return getWebAppService();
   },
 };
 

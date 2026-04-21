@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { addPluginListener, PluginListener } from '@tauri-apps/api/core';
 import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { getCurrentWindow, getAllWindows } from '@tauri-apps/api/window';
-import { isTauriAppPlatform } from '@/services/environment';
+import { isTauriShell } from '@/services/environment';
 import { navigateToLibrary, showLibraryWindow } from '@/utils/nav';
 
 interface SingleInstancePayload {
@@ -77,7 +77,7 @@ export function useOpenWithBooks() {
   };
 
   useEffect(() => {
-    if (!isTauriAppPlatform() || !appService) return;
+    if (!isTauriShell() || !appService) return;
     if (listenedOpenWithBooks.current) return;
     listenedOpenWithBooks.current = true;
 

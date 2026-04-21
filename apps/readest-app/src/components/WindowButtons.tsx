@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { useEnv } from '@/context/EnvContext';
 
 import { tauriHandleMinimize, tauriHandleToggleMaximize, tauriHandleClose } from '@/utils/window';
-import { isTauriAppPlatform } from '@/services/environment';
+import { isTauriShell } from '@/services/environment';
 import { useTranslation } from '@/hooks/useTranslation';
 
 interface WindowButtonsProps {
@@ -146,7 +146,7 @@ const WindowButtons: React.FC<WindowButtonsProps> = ({
   };
 
   useEffect(() => {
-    if (!isTauriAppPlatform()) return;
+    if (!isTauriShell()) return;
     const headerElement = headerRef?.current;
     if (!headerElement) return;
 
