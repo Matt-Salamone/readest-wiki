@@ -28,33 +28,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-// #region agent log
-fetch('http://127.0.0.1:7784/ingest/aa2f2faa-9fa8-4ae9-bac5-31fa9bb8e305', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '3e2bda' },
-  body: JSON.stringify({
-    sessionId: '3e2bda',
-    location: 'supabase.ts:module',
-    message: 'supabase env resolution (no secrets)',
-    data: {
-      hasNextPublicUrl: Boolean(process.env['NEXT_PUBLIC_SUPABASE_URL']),
-      hasSupabaseUrl: Boolean(process.env['SUPABASE_URL']),
-      hasDefaultUrlB64: Boolean(process.env['NEXT_PUBLIC_DEFAULT_SUPABASE_URL_BASE64']),
-      urlB64Len: process.env['NEXT_PUBLIC_DEFAULT_SUPABASE_URL_BASE64']?.length ?? 0,
-      hasNextPublicKey: Boolean(process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']),
-      hasSupabaseAnon: Boolean(process.env['SUPABASE_ANON_KEY']),
-      hasDefaultKeyB64: Boolean(process.env['NEXT_PUBLIC_DEFAULT_SUPABASE_KEY_BASE64']),
-      keyB64Len: process.env['NEXT_PUBLIC_DEFAULT_SUPABASE_KEY_BASE64']?.length ?? 0,
-      resolvedHasUrl: Boolean(supabaseUrl),
-      resolvedHasKey: Boolean(supabaseAnonKey),
-    },
-    timestamp: Date.now(),
-    hypothesisId: 'A',
-    runId: process.env['DEBUG_RUN_ID'] || 'post-fix',
-  }),
-}).catch(() => {});
-// #endregion
-
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export const createSupabaseClient = (accessToken?: string) => {
