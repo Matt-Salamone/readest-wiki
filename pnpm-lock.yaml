@@ -34,6 +34,9 @@ patchedDependencies:
   mdast-util-gfm-autolink-literal@2.0.1:
     hash: a119b196bac546b8f07e1a9600ced6f526b0676e2b959914868e393ecffbaff8
     path: patches/mdast-util-gfm-autolink-literal@2.0.1.patch
+  next-view-transitions@0.3.5:
+    hash: 69cdf3e592dc3e322a4983a53d1a54e1950ab60bca3531f195447f80625aabc9
+    path: patches/next-view-transitions@0.3.5.patch
 
 importers:
 
@@ -290,7 +293,7 @@ importers:
         version: 16.2.3(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       next-view-transitions:
         specifier: ^0.3.5
-        version: 0.3.5(next@16.2.3(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        version: 0.3.5(patch_hash=69cdf3e592dc3e322a4983a53d1a54e1950ab60bca3531f195447f80625aabc9)(next@16.2.3(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       nunjucks:
         specifier: ^3.2.4
         version: 3.2.4(chokidar@3.6.0)
@@ -15719,7 +15722,7 @@ snapshots:
 
   netmask@2.0.2: {}
 
-  next-view-transitions@0.3.5(next@16.2.3(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
+  next-view-transitions@0.3.5(patch_hash=69cdf3e592dc3e322a4983a53d1a54e1950ab60bca3531f195447f80625aabc9)(next@16.2.3(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
     dependencies:
       next: 16.2.3(@babel/core@7.28.6)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react: 19.2.5

@@ -1,0 +1,14 @@
+diff --git a/dist/index.js b/dist/index.js
+index 41ba06885ed234bc14ef6790ae9f023e3ee4886e..be8b260735a98201065304da07d1cd184df7ef96 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,7 +1,7 @@
+ 'use client';
+ import { jsx } from 'react/jsx-runtime';
+-import NextLink from 'next/link';
+-import { usePathname, useRouter } from 'next/navigation';
++import NextLink from 'next/link.js';
++import { usePathname, useRouter } from 'next/navigation.js';
+ import { useSyncExternalStore, useRef, useState, useEffect, use, createContext, useCallback, startTransition, useMemo } from 'react';
+ 
+ function useHash() {
